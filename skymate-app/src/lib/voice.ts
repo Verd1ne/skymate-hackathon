@@ -2305,7 +2305,7 @@ export class VoiceService {
 	}
 	private recognition: SpeechRecognition | null = null;
 	private isListening = false;
-	private useAzureSpeech = false; // Toggle between Web Speech API and Azure Speech
+	private useAzureSpeech = false; // Will be set to true if Azure credentials are available
 	private azureSpeechService: any = null; // Will be AzureSpeechService instance
 	private micReadyTime = 0;
 	private wakeWordDetected = false;
@@ -2316,6 +2316,8 @@ export class VoiceService {
 	private speechBufferTimer: ReturnType<typeof setTimeout> | null = null;
 	private lastWakeWordTime = 0; // Debounce wake word detection
 	private virtualWakeWordActive = false; // Flag: simulated wake word (button/tap) is active
+	private wakeWordResultIndex = -1; // Track which result index (utterance) we detected wake word in - prevents re-detection in same utterance
+	private isTTSSpeaking = false; // Track if TTS is currently speaking - prevents wake word detection during AI speech
 
 	// Production-level features
 	private metrics: VoiceMetrics;
@@ -2555,6 +2557,7 @@ export class VoiceService {
 		this.wakeWordDetectedTime = 0;
 		this.speechBuffer = []; // Clear speech buffer
 		this.virtualWakeWordActive = false; // Clear virtual wake word flag
+		this.wakeWordResultIndex = -1; // Reset result index tracking
 		// NOTE: Don't reset wakeWordConfirmationPlayed here to prevent multiple beeps
 		// It will be reset after request processing or timeout
 
@@ -3116,14 +3119,39 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						console.log(`🔍 Interim (wake word): ${interimText}`);
 					}
 
-				// 100% ACCURATE: Check for wake word in EVERY interim result
-				// Use comprehensive detection that works regardless of current state
-				const wakeWordCheck = this.detectWakeWord(interimText);
+				// ROBUST WAKE WORD DETECTION: Check for wake word but prevent re-detection in same utterance
+				// The key insight: "skymate remind me" is ONE utterance with multiple interim updates
+				// We should only detect wake word ONCE per utterance (result index)
+				const currentResultIndex = i;
 
-				// CRITICAL: If wake word detected, ALWAYS reset (even if already detected)
-				// This ensures "skymate" always triggers a fresh start
-				// IMPROVED: Add intelligent debouncing to prevent duplicate detections
-				if (wakeWordCheck.detected) {
+				// OPTIMIZATION: If we already detected wake word in this utterance, skip detection entirely
+				// Just accumulate the text - no need to check for wake word again
+				const isSameUtterance = this.wakeWordResultIndex === currentResultIndex;
+				
+				if (isSameUtterance) {
+					// Already detected wake word in this utterance - skip to accumulation logic
+					this.log(
+						"debug",
+						`📝 Same utterance update (resultIndex ${currentResultIndex}) - skipping wake word check`,
+						{ text: interimText }
+					);
+					// Continue to accumulation logic below
+				} else {
+					// NEW utterance OR first interim - check for wake word
+					const wakeWordCheck = this.detectWakeWord(interimText);
+
+					// TTS LOCK: Block wake word detection while AI is speaking
+					if (wakeWordCheck.detected && this.isTTSSpeaking) {
+						this.log(
+							"debug",
+							`🔒 Wake word detected but TTS is speaking - BLOCKED to prevent interruption`,
+							{ text: interimText }
+						);
+						return; // Don't process wake word while TTS is active
+					}
+
+					// CRITICAL: If wake word detected in a NEW utterance
+					if (wakeWordCheck.detected) {
 					const now = Date.now();
 					const timeSinceLastWakeWord = now - this.lastWakeWordTime;
 
@@ -3136,6 +3164,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 								variant: wakeWordCheck.variant,
 								confidence: wakeWordCheck.confidence.toFixed(2),
 								timeSinceLastWakeWord,
+								resultIndex: currentResultIndex,
 							}
 						);
 						// Continue processing current session, don't reset
@@ -3154,6 +3183,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 							{
 								variant: wakeWordCheck.variant,
 								text: interimText,
+								resultIndex: currentResultIndex,
 							}
 						);
 						// Play subtle feedback that it was heard but debounced
@@ -3161,18 +3191,20 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						return;
 					}
 
-					// Update last wake word time
+					// Update last wake word time and result index
 					this.lastWakeWordTime = now;
+					this.wakeWordResultIndex = currentResultIndex; // Track this utterance
 
-					// CRITICAL: ALWAYS reset state when wake word detected (100% guarantee)
+					// CRITICAL: Reset state for new wake word detection
 					this.log(
 						"info",
-						"🔄 Wake word detected (100% accuracy) - FORCING complete state reset",
+						"🔄 Wake word detected in NEW utterance - Starting fresh session",
 						{
 							variant: wakeWordCheck.variant,
 							confidence: wakeWordCheck.confidence.toFixed(2),
 							text: interimText,
 							timeSinceLastWakeWord,
+							resultIndex: currentResultIndex,
 							previousState: {
 								wakeWordDetected: this.wakeWordDetected,
 								hasSession: !!this.currentSession,
@@ -3181,7 +3213,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						}
 					);
 
-					// CRITICAL: Force complete reset - this happens EVERY time "skymate" is detected
+					// CRITICAL: Force complete reset - this happens for EACH NEW wake word utterance
 					this.resetWakeWordState();
 
 					// Start fresh session
@@ -3191,6 +3223,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					this.metrics.wakeWordDetections++;
 					this.wakeWordDetected = true;
 					this.wakeWordDetectedTime = now;
+					this.wakeWordResultIndex = currentResultIndex; // Track which utterance has wake word
 
 					// Trigger wake word confirmation audio (only once per wake word)
 					if (
@@ -3222,131 +3255,53 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 							sessionId: session.id,
 						}
 					);
-				} else if (this.wakeWordDetected) {
-					// CRITICAL: Check if wake word appears again during active session (new request)
-					// Use comprehensive detection to catch it even if partially recognized
-					const wakeWordCheckAgain = this.detectWakeWord(interimText);
-
-					if (wakeWordCheckAgain.detected) {
-						const now = Date.now();
-						const timeSinceLastWakeWord = now - this.lastWakeWordTime;
-
-						// HARD LIMIT: Prevent rapid-fire detections
-						if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_HARD_LIMIT) {
-							this.log(
-								"debug",
-								`⏸️ Wake word detected again but within hard limit (${timeSinceLastWakeWord}ms), ignoring`,
-								{
-									variant: wakeWordCheckAgain.variant,
-									confidence: wakeWordCheckAgain.confidence.toFixed(2),
-								}
-							);
-							return;
-						}
-
-						// SOFT DEBOUNCE: Allow repeated wake words but with intelligent timing
-						if (
-							timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE &&
-							wakeWordCheckAgain.confidence < 0.95
-						) {
-							this.log(
-								"info",
-								`⏸️ Wake word detected again but debounced (${timeSinceLastWakeWord}ms since last)`,
-								{
-									variant: wakeWordCheckAgain.variant,
-									confidence: wakeWordCheckAgain.confidence.toFixed(2),
-								}
-							);
-							return;
-						}
-
-						// Update last wake word time
-						this.lastWakeWordTime = now;
-
-						// NEW REQUEST DETECTED - Force complete reset
-						this.log(
-							"info",
-							"🔄 Wake word detected AGAIN during session - FORCING complete reset for new request",
-							{
-								variant: wakeWordCheckAgain.variant,
-								confidence: wakeWordCheckAgain.confidence.toFixed(2),
-								timeSinceLastWakeWord,
-								previousSession: this.currentSession?.id,
-								newText: interimText,
-							}
-						);
-
-						// CRITICAL: Force complete reset (happens every time "skymate" is said)
-						this.resetWakeWordState();
-						const newSession = this.startNewSession();
-
-						// Update state
-						this.metrics.wakeWordDetections++;
-						this.wakeWordDetected = true;
-						this.wakeWordDetectedTime = now;
-
-						// Trigger wake word confirmation audio (only once per wake word)
-						if (
-							this.onWakeWordConfirmation &&
-							!this.wakeWordConfirmationPlayed
-						) {
-							this.wakeWordConfirmationPlayed = true;
-							this.onWakeWordConfirmation();
-						}
-
-						// Extract text after new wake word
-						const normalized = this.extractTextAfterWakeWord(interimText);
-
-						if (normalized) {
-							this.pendingTranscript = normalized;
-							newSession.transcript = normalized;
-						}
-
-						this.clearContinuationTimeout();
-						return; // Don't accumulate - this is a new request
 					}
+				} // End of else block (new utterance wake word check)
 
-						// Wake word already detected, accumulate the rest (continuation of current request)
-						// This allows users to pause and continue speaking
-						const timeSinceWakeWord = Date.now() - this.wakeWordDetectedTime;
-						if (timeSinceWakeWord <= TIMING_CONSTANTS.WAKE_WORD_TIMEOUT) {
-							// CRITICAL: Filter out wake word repetitions from interim results
-							// Remove "skymate" and variants from the interim text before accumulating
-							const cleanedInterim = this.cleanWakeWordFromText(interimText);
+				// ACCUMULATION LOGIC: If wake word was already detected, accumulate the rest
+				// This handles both same utterance updates AND continuation after pause
+				if (this.wakeWordDetected) {
+					// Wake word already detected, accumulate the rest (continuation of current request)
+					// This allows users to pause and continue speaking
+					const timeSinceWakeWord = Date.now() - this.wakeWordDetectedTime;
+					if (timeSinceWakeWord <= TIMING_CONSTANTS.WAKE_WORD_TIMEOUT) {
+						// CRITICAL: Filter out wake word repetitions from interim results
+						// Remove "skymate" and variants from the interim text before accumulating
+						const cleanedInterim = this.cleanWakeWordFromText(interimText);
 
-							// Only accumulate if there's actual content (not just wake word)
-							if (cleanedInterim) {
-								// PRODUCTION: Replace buffer with interim result (not push)
-								// Interim results are cumulative - they already contain the full text so far
-								// Pushing would create duplicates like "remind remind me remind me of..."
-								this.speechBuffer = [cleanedInterim];
-								this.pendingTranscript = cleanedInterim.trim();
+						// Only accumulate if there's actual content (not just wake word)
+						if (cleanedInterim) {
+							// PRODUCTION: Replace buffer with interim result (not push)
+							// Interim results are cumulative - they already contain the full text so far
+							// Pushing would create duplicates like "remind remind me remind me of..."
+							this.speechBuffer = [cleanedInterim];
+							this.pendingTranscript = cleanedInterim.trim();
 
-								// Update session transcript with throttling
-								if (this.currentSession) {
-									this.currentSession.transcript = this.pendingTranscript;
+							// Update session transcript with throttling
+							if (this.currentSession) {
+								this.currentSession.transcript = this.pendingTranscript;
+							}
+
+							// Throttled logging and callback - only update if transcript has changed significantly
+							if (this.shouldUpdateInterim(this.pendingTranscript)) {
+								this.lastInterimUpdate = Date.now();
+								this.lastInterimTranscript = this.pendingTranscript;
+								
+								// Call interim callback for UI updates (throttled)
+								if (this.onInterimTranscript) {
+									this.onInterimTranscript(this.pendingTranscript);
 								}
-
-								// Throttled logging and callback - only update if transcript has changed significantly
-								if (this.shouldUpdateInterim(this.pendingTranscript)) {
-									this.lastInterimUpdate = Date.now();
-									this.lastInterimTranscript = this.pendingTranscript;
-									
-									// Call interim callback for UI updates (throttled)
-									if (this.onInterimTranscript) {
-										this.onInterimTranscript(this.pendingTranscript);
+								
+								this.log(
+									"debug",
+									`📝 Accumulating interim text for current session`,
+									{
+										sessionId: this.currentSession?.id,
+										transcript: this.pendingTranscript,
+										bufferLength: this.speechBuffer.length,
 									}
-									
-									this.log(
-										"debug",
-										`📝 Accumulating interim text for current session`,
-										{
-											sessionId: this.currentSession?.id,
-											transcript: this.pendingTranscript,
-											bufferLength: this.speechBuffer.length,
-										}
-									);
-								}
+								);
+							}
 
 							// Reset and extend buffer timer - wait for complete speech
 							if (this.speechBufferTimer)
@@ -3423,16 +3378,16 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 									this.log("debug", "Session already processed, skipping continuation timeout");
 								}
 							}, TIMING_CONSTANTS.WAKE_WORD_TIMEOUT);
-							} else {
-								// Just wake word detected again - ignore it (user might have repeated it)
-								this.log(
-									"debug",
-									`🔄 Wake word repeated in interim, ignoring`,
-									{ text: interimText }
-								);
-							}
+						} else {
+							// Just wake word detected again - ignore it (user might have repeated it)
+							this.log(
+								"debug",
+								`🔄 Wake word repeated in interim, ignoring`,
+								{ text: interimText }
+							);
 						}
 					}
+				}
 				}
 			}
 
@@ -3503,22 +3458,42 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					}
 				}
 
-			// CRITICAL: If wake word found in final results, ALWAYS reset (even if already detected)
-			// IMPROVED: Add debouncing to prevent duplicate detections from interim+final
+			// CRITICAL: If wake word found in final results, check if it's a NEW utterance
+			// IMPROVED: Use result index tracking to prevent duplicate detections from interim+final
 			if (bestWakeWordMatch) {
+				// TTS LOCK: Block wake word detection while AI is speaking
+				if (this.isTTSSpeaking) {
+					this.log(
+						"debug",
+						`🔒 Wake word in final result but TTS is speaking - BLOCKED to prevent interruption`,
+						{ 
+							text: bestWakeWordMatch.result.transcript.substring(0, 50),
+							variant: bestWakeWordMatch.variant
+						}
+					);
+					foundWakeWordInFinal = false;
+					// Don't process - skip to normal continuation handling
+				} else {
 				const now = Date.now();
 				const timeSinceLastWakeWord = now - this.lastWakeWordTime;
 				const trimmed = bestWakeWordMatch.result.transcript.trim();
+				const currentResultIndex = event.resultIndex;
+
+				// Check if this is the same utterance we already processed in interim
+				const isSameUtterance = this.wakeWordResultIndex === currentResultIndex;
 
 				// HARD LIMIT: Prevent rapid-fire detections (interim already processed this)
-				if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_HARD_LIMIT) {
+				// OR if it's the same utterance (result index), skip it
+				if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_HARD_LIMIT || isSameUtterance) {
 					this.log(
 						"debug",
-						`⏸️ Wake word in final results but within hard limit (${timeSinceLastWakeWord}ms), already processed in interim`,
+						`⏸️ Wake word in final results but ${isSameUtterance ? 'same utterance (resultIndex ' + currentResultIndex + ')' : 'within hard limit (' + timeSinceLastWakeWord + 'ms)'}, already processed`,
 						{
 							variant: bestWakeWordMatch.variant,
 							confidence: bestWakeWordMatch.confidence.toFixed(3),
 							timeSinceLastWakeWord,
+							isSameUtterance,
+							resultIndex: currentResultIndex,
 						}
 					);
 					// Skip - already processed in interim results
@@ -3539,17 +3514,19 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						);
 						foundWakeWordInFinal = false;
 					} else {
-					// Update last wake word time
+					// Update last wake word time and result index
 					this.lastWakeWordTime = now;
+					this.wakeWordResultIndex = currentResultIndex;
 
 					this.log(
 						"info",
-						`🎯 Wake word detected in final results (100% accuracy) - FORCING complete reset`,
+						`🎯 Wake word detected in final results (NEW utterance) - Starting fresh session`,
 						{
 							variant: bestWakeWordMatch.variant,
 							confidence: bestWakeWordMatch.confidence.toFixed(3),
 							text: trimmed,
 							timeSinceLastWakeWord,
+							resultIndex: currentResultIndex,
 							previousSession: this.currentSession?.id,
 							previousState: {
 								wakeWordDetected: this.wakeWordDetected,
@@ -3559,7 +3536,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						}
 					);
 
-					// CRITICAL: Force complete reset - happens EVERY time "skymate" is detected
+					// CRITICAL: Force complete reset - happens for EACH NEW wake word utterance
 					this.resetWakeWordState();
 					const session = this.startNewSession();
 
@@ -3567,6 +3544,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					this.metrics.wakeWordDetections++;
 					this.wakeWordDetected = true;
 					this.wakeWordDetectedTime = now;
+					this.wakeWordResultIndex = currentResultIndex;
 					foundWakeWordInFinal = true;
 
 					// Trigger wake word confirmation audio (only once per wake word)
@@ -3835,6 +3813,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			}
 			}  // End of else block (actual wake word processing) started at line ~3539
 		}  // End of else block (after hard limit check) started at line ~3524
+		}  // End of else block (TTS lock check)
 	}  // End of if (bestWakeWordMatch)
 
 		// If wake word was already detected, check if this is a continuation
@@ -4507,6 +4486,12 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			return;
 		}
 
+		// TTS LOCK: Block simulated wake word while AI is speaking
+		if (this.isTTSSpeaking) {
+			this.log('warn', '🔒 Cannot simulate wake word: TTS is currently speaking');
+			return;
+		}
+
 		// For Azure Speech, simulate interim result processing
 		if (this.useAzureSpeech) {
 			this.log('info', '🎯 Virtual wake word activated via button/tap (Azure Speech)');
@@ -4610,6 +4595,30 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 				method: 'button/tap',
 			});
 		}
+	}
+
+	/**
+	 * Set TTS speaking state - call this when TTS starts/stops speaking
+	 * This prevents wake word detection while the AI is talking
+	 * 
+	 * @param isSpeaking - true when TTS starts, false when it stops
+	 */
+	setTTSSpeakingState(isSpeaking: boolean): void {
+		const wasSpeaking = this.isTTSSpeaking;
+		this.isTTSSpeaking = isSpeaking;
+		
+		if (isSpeaking && !wasSpeaking) {
+			this.log('info', '🔒 TTS started speaking - Wake word detection LOCKED');
+		} else if (!isSpeaking && wasSpeaking) {
+			this.log('info', '🔓 TTS stopped speaking - Wake word detection UNLOCKED');
+		}
+	}
+
+	/**
+	 * Check if TTS is currently speaking
+	 */
+	isTTSCurrentlySpeaking(): boolean {
+		return this.isTTSSpeaking;
 	}
 
 	/**
@@ -4844,7 +4853,18 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 		const isWakeWordDetected =
 		(wakeWordCheck.detected && confidence >= wakeWordConfidenceThreshold) || isVirtualWakeWord;
 
+		// TTS LOCK: Block wake word detection while AI is speaking
+		if (isWakeWordDetected && this.isTTSSpeaking && !isVirtualWakeWord) {
+			this.log(
+				"debug",
+				`🔒 Azure interim: Wake word detected but TTS is speaking - BLOCKED to prevent interruption`,
+				{ text }
+			);
+			return; // Don't process wake word while TTS is active
+		}
+
 		// PRODUCTION: Debounce wake word detection to prevent duplicate triggers
+		// CRITICAL: If wake word already detected, check if this is SAME utterance or NEW
 		if (isWakeWordDetected) {
 			// CRITICAL FIX: If this is a virtual wake word, session was already set up
 			// Just process the text without resetting
@@ -4862,17 +4882,48 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 				this.virtualWakeWordActive = false;
 				return; // Don't process as normal wake word
 			}
+			
 			const timeSinceLastWakeWord = now - this.lastWakeWordTime;
-			if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE) {
+			
+			// ROBUST FIX: If wake word was recently detected AND we're still in active session,
+			// this is likely the SAME utterance with more text (e.g., "skymate" → "skymate remind")
+			// Only create new session if:
+			// 1. Enough time has passed (not within debounce window), OR
+			// 2. No active session exists
+			const isLikelySameUtterance = 
+				timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE &&
+				this.wakeWordDetected &&
+				this.currentSession;
+			
+			if (isLikelySameUtterance) {
 				this.log(
 					"debug",
-					`Wake word debounced (${timeSinceLastWakeWord}ms since last)`
+					`📝 Azure interim update for same utterance (${timeSinceLastWakeWord}ms since wake word) - accumulating`,
+					{ text }
+				);
+				// Don't create new session - this is continuation of same utterance
+				// Let it fall through to accumulation logic below
+				return;
+			}
+			
+			// Hard limit check (separate from same utterance check)
+			if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_HARD_LIMIT) {
+				this.log(
+					"debug",
+					`⏸️ Wake word within hard limit (${timeSinceLastWakeWord}ms), ignoring`
 				);
 				return;
 			}
+			
+			// NEW wake word detected - create new session
 			this.lastWakeWordTime = now;
 
-				// Reset state and start new session (for REAL wake word)
+			// Reset state and start new session (for REAL wake word)
+			this.log(
+				"info",
+				`🔄 Azure: Wake word detected in NEW utterance - Starting fresh session`,
+				{ text, timeSinceLastWakeWord }
+			);
 			this.resetWakeWordState();
 			this.speechBuffer = []; // Clear buffer
 			const session = this.startNewSession();
@@ -4971,9 +5022,20 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 		(wakeWordCheck.detected && confidence >= wakeWordConfidenceThreshold) || isVirtualWakeWord;
 		const now = Date.now();
 
+		// TTS LOCK: Block wake word detection while AI is speaking
+		if (isWakeWordDetected && this.isTTSSpeaking && !isVirtualWakeWord) {
+			this.log(
+				"debug",
+				`🔒 Azure final: Wake word detected but TTS is speaking - BLOCKED to prevent interruption`,
+				{ text: text.substring(0, 50) }
+			);
+			return; // Don't process wake word while TTS is active
+		}
+
 		// PRODUCTION: Debounce wake word detection to prevent double-triggers
+		// CRITICAL: Check if this is the SAME utterance as interim or a NEW one
 		if (isWakeWordDetected) {
-				// CRITICAL FIX: If this is a virtual wake word, session was already set up
+			// CRITICAL FIX: If this is a virtual wake word, session was already set up
 			// Just pass the text directly to callback
 			if (isVirtualWakeWord) {
 				this.log('info', '✅ Final speech after virtual wake word (button/tap) - calling callback');
@@ -4995,8 +5057,28 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 				}
 				return; // Don't process as normal wake word
 			}
+			
 			const timeSinceLastWakeWord = now - this.lastWakeWordTime;
-			if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE) {
+			
+			// ROBUST FIX: If wake word was recently detected in interim AND we have active session,
+			// this final result is likely the SAME utterance (interim → final)
+			// Only create new session if it's truly a NEW utterance
+			const isLikelySameUtterance = 
+				timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_HARD_LIMIT &&
+				this.wakeWordDetected &&
+				this.currentSession;
+			
+			// Determine which session to use
+			let session = this.currentSession;
+			
+			if (isLikelySameUtterance) {
+				this.log(
+					"debug",
+					`📝 Azure final result for same utterance (${timeSinceLastWakeWord}ms since wake word) - using existing session`,
+					{ text }
+				);
+				// Use existing session - this is the final version of the same utterance
+			} else if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE) {
 				this.log(
 					"warn",
 					`⏸️ Wake word debounced (too soon after last: ${timeSinceLastWakeWord}ms < ${TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE}ms)`,
@@ -5009,20 +5091,33 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 				);
 				// FIX: Better feedback - user knows why their retry didn't work
 				return;
+			} else {
+				// NEW wake word utterance - create new session
+				this.log(
+					"info",
+					`🔄 Azure: Wake word in final result (NEW utterance) - Starting fresh session`,
+					{ text, timeSinceLastWakeWord }
+				);
+				this.lastWakeWordTime = now;
+
+				this.resetWakeWordState();
+				this.speechBuffer = [];
+				session = this.startNewSession();
+				this.metrics.wakeWordDetections++;
+				this.wakeWordDetected = true;
+				this.wakeWordDetectedTime = now;
+
+				// Trigger wake word confirmation audio (only once per wake word)
+				if (this.onWakeWordConfirmation && !this.wakeWordConfirmationPlayed) {
+					this.wakeWordConfirmationPlayed = true;
+					this.onWakeWordConfirmation();
+				}
 			}
-			this.lastWakeWordTime = now;
 
-			this.resetWakeWordState();
-			this.speechBuffer = [];
-			const session = this.startNewSession();
-			this.metrics.wakeWordDetections++;
-			this.wakeWordDetected = true;
-			this.wakeWordDetectedTime = now;
-
-			// Trigger wake word confirmation audio (only once per wake word)
-			if (this.onWakeWordConfirmation && !this.wakeWordConfirmationPlayed) {
-				this.wakeWordConfirmationPlayed = true;
-				this.onWakeWordConfirmation();
+			// Ensure we have a session (should always have one at this point)
+			if (!session) {
+				this.log("error", "No session available for wake word processing");
+				return;
 			}
 
 			const afterWakeWord = this.extractTextAfterWakeWord(text);

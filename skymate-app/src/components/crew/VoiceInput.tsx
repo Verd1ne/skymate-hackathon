@@ -15,6 +15,7 @@ import { TTSService } from "../../lib/ttsService";
 import { generateTaskScript } from "../../lib/taskScriptGenerator";
 import { useToast } from "../shared/ToastContainer";
 import { MicrophoneTest } from "./MicrophoneTest";
+import { initializeFlightTasks } from "../../lib/flightInitialization";
 
 function VoiceInput() {
   const [isListening, setIsListening] = useState(false);
@@ -23,6 +24,8 @@ function VoiceInput() {
   const [isParsing, setIsParsing] = useState(false);
   const [parsedIntent, setParsedIntent] = useState<ParsedIntent | null>(null);
   const [showMicTest, setShowMicTest] = useState(false);
+  const [isFlightStarted, setIsFlightStarted] = useState(false);
+  const [isInitializingFlight, setIsInitializingFlight] = useState(false);
 
   const { createTask, tasks, cancelTaskItem, checkTaskItem } = useTasks();
   const { checkStock, reserveItemForTask } = useInventory();
@@ -41,6 +44,36 @@ function VoiceInput() {
     taskCreationStart?: number;
     taskCreationEnd?: number;
   }>({});
+
+  // Manual flight initialization function
+  const handleStartFlight = async () => {
+    if (isFlightStarted || isInitializingFlight) return;
+    
+    setIsInitializingFlight(true);
+    console.log("🛫 Starting flight manually...");
+    
+    try {
+      const stats = await initializeFlightTasks();
+      
+      if (stats.tasksCreated > 0) {
+        console.log(`✅ Flight started: ${stats.tasksCreated} tasks created`, stats);
+        showSuccess(
+          "Flight Started",
+          `Created ${stats.tasksCreated} tasks from passenger manifest`
+        );
+        setIsFlightStarted(true);
+      } else {
+        console.log("ℹ️ No tasks to create or flight already started");
+        showInfo("Flight Status", "No tasks to create");
+        setIsFlightStarted(true);
+      }
+    } catch (error) {
+      console.error("❌ Failed to start flight:", error);
+      showError("Flight Start Error", "Failed to initialize flight tasks");
+    } finally {
+      setIsInitializingFlight(false);
+    }
+  };
 
   useEffect(() => {
     console.log("🎤 VoiceInput component mounted - initializing VoiceService");
@@ -237,6 +270,253 @@ function VoiceInput() {
         /\b(describe|tell me about|what's in|what is in|info about|information about)\s+(?:the\s+)?(.+?)(?:\s+meal)?$/i;
       const describeMealMatch = normalizedText.match(describeMealPattern);
 
+      // NEW: Check for seat information commands (e.g., "remind me of 52B", "tell me about seat 25A")
+      // Pattern matches with or without the word "seat"
+      // Handles both: "remind me of 50A" AND "50A remind me of" (reversed order from Azure)
+      const seatInfoPattern1 =
+        /\b(remind|tell|show|display|what|who|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+seat)?\s+(\d{1,2}[A-F])\b/i;
+      const seatInfoPattern2 =
+        /\b(\d{1,2}[A-F])\s+(remind|tell|show|display|what|who|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?/i;
+      
+      const seatInfoMatch = normalizedText.match(seatInfoPattern1) || normalizedText.match(seatInfoPattern2);
+      
+      // Extract seat number from whichever pattern matched
+      let seatNumber: string | null = null;
+      if (seatInfoMatch) {
+        if (seatInfoMatch[2] && /^\d{1,2}[A-F]$/i.test(seatInfoMatch[2])) {
+          // Pattern 1: seat is in group 2
+          seatNumber = seatInfoMatch[2];
+        } else if (seatInfoMatch[1] && /^\d{1,2}[A-F]$/i.test(seatInfoMatch[1])) {
+          // Pattern 2: seat is in group 1
+          seatNumber = seatInfoMatch[1];
+        }
+      }
+      
+      // Exclude if it's a task command (e.g., "remind me of task 1")
+      const isTaskCommand = /\b(task|past|ask)\s+\d+/i.test(normalizedText);
+      const validSeatInfo = seatInfoMatch && seatNumber && !isTaskCommand;
+
+      // NEW: Check for special requests list command (e.g., "remind me of special requests", "list special requests")
+      const specialRequestsPattern =
+        /\b(remind|tell|show|display|list|what|give|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+the)?(?:\s+all)?(?:\s+special\s*requests?)\b/i;
+      const specialRequestsMatch = normalizedText.match(specialRequestsPattern);
+
+      // NEW: Check for priority members list command (e.g., "who is priority member", "list priority members")
+      const priorityMembersPattern =
+        /\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+priority\s*members?)\b/i;
+      const priorityMembersMatch = normalizedText.match(priorityMembersPattern);
+
+
+
+      // Handle seat information requests
+      if (validSeatInfo) {
+        console.log("🪑 Seat information request detected:", {
+          command: normalizedText,
+          seatNumber: seatNumber,
+        });
+
+        const seatNumberUpper = seatNumber!.toUpperCase().trim();
+
+        // Import passenger data
+        const { getPassengerInfo, formatPassengerInfo } = await import(
+          "../../data/passengerData"
+        );
+
+        const passengerInfo = getPassengerInfo(seatNumberUpper);
+
+        if (passengerInfo) {
+          console.log(`✅ Found passenger information for seat: ${seatNumberUpper}`);
+
+          // Play TTS with passenger information
+          if (ttsServiceRef.current) {
+            try {
+              const description = formatPassengerInfo(passengerInfo);
+              console.log(`🔊 Speaking passenger information: ${description}`);
+
+              await ttsServiceRef.current.speak(description, {
+                rate: 1.0,
+                onEnd: () => {
+                  console.log("✅ Passenger information spoken successfully");
+                },
+                onError: (error) => {
+                  console.error("❌ TTS Error for passenger info:", error);
+                },
+              });
+            } catch (error) {
+              console.error("❌ Error playing passenger information:", error);
+            }
+          }
+
+          // Reset state and restart listening
+          setTranscript("");
+          setParsedIntent(null);
+          setIsListening(false);
+          setIsMicReady(false);
+          hasAutoCreatedRef.current = false;
+
+          // Restart continuous listening
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
+        } else {
+          console.warn(`⚠️ No passenger information found for seat: ${seatNumberUpper}`);
+
+          // Play TTS with "not found" message
+          if (ttsServiceRef.current) {
+            try {
+              await ttsServiceRef.current.speak(
+                `Sorry, I don't have passenger information for seat ${seatNumberUpper}. This seat may be unassigned.`,
+                {
+                  rate: 1.0,
+                }
+              );
+            } catch (error) {
+              console.warn("⚠️ TTS failed:", error);
+            }
+          }
+
+          // Reset state and restart listening
+          setTranscript("");
+          setParsedIntent(null);
+          setIsListening(false);
+          setIsMicReady(false);
+          hasAutoCreatedRef.current = false;
+
+          // Restart continuous listening
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
+        }
+
+        return; // Exit early - don't process as regular request
+      }
+
+      // Handle special requests list command
+      if (specialRequestsMatch) {
+        console.log("📋 Special requests list command detected:", {
+          command: normalizedText,
+        });
+
+        // Import passenger data
+        const { formatAllSpecialRequests } = await import(
+          "../../data/passengerData"
+        );
+
+        const specialRequestsText = formatAllSpecialRequests();
+
+        console.log(`✅ Found special requests: ${specialRequestsText}`);
+
+        // Play TTS with special requests
+        if (ttsServiceRef.current) {
+          try {
+            console.log(`🔊 Speaking special requests: ${specialRequestsText}`);
+
+            await ttsServiceRef.current.speak(specialRequestsText, {
+              rate: 1.0,
+              onEnd: () => {
+                console.log("✅ Special requests spoken successfully");
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error for special requests:", error);
+              },
+            });
+          } catch (error) {
+            console.error("❌ Error playing special requests:", error);
+          }
+        }
+
+        // Reset state and restart listening
+        setTranscript("");
+        setParsedIntent(null);
+        setIsListening(false);
+        setIsMicReady(false);
+        hasAutoCreatedRef.current = false;
+
+        // Restart continuous listening
+        if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+          createTimeout(() => {
+            if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+              voiceServiceRef.current.ensureContinuousListening(
+                wakeWordCallbackRef.current,
+                wakeWordOnlyCallbackRef.current || undefined
+              );
+            }
+          }, 100);
+        }
+
+        return; // Exit early for special requests list command
+      }
+
+      // Handle priority members list command
+      if (priorityMembersMatch) {
+        console.log("⭐ Priority members list command detected:", {
+          command: normalizedText,
+        });
+
+        // Import passenger data
+        const { formatAllPriorityMembers } = await import(
+          "../../data/passengerData"
+        );
+
+        const priorityMembersText = formatAllPriorityMembers();
+
+        console.log(`✅ Found priority members: ${priorityMembersText}`);
+
+        // Play TTS with priority members
+        if (ttsServiceRef.current) {
+          try {
+            console.log(`🔊 Speaking priority members: ${priorityMembersText}`);
+
+            await ttsServiceRef.current.speak(priorityMembersText, {
+              rate: 1.0,
+              onEnd: () => {
+                console.log("✅ Priority members spoken successfully");
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error for priority members:", error);
+              },
+            });
+          } catch (error) {
+            console.error("❌ Error playing priority members:", error);
+          }
+        }
+
+        // Reset state and restart listening
+        setTranscript("");
+        setParsedIntent(null);
+        setIsListening(false);
+        setIsMicReady(false);
+        hasAutoCreatedRef.current = false;
+
+        // Restart continuous listening
+        if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+          createTimeout(() => {
+            if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+              voiceServiceRef.current.ensureContinuousListening(
+                wakeWordCallbackRef.current,
+                wakeWordOnlyCallbackRef.current || undefined
+              );
+            }
+          }, 100);
+        }
+
+        return; // Exit early for priority members list command
+      }
+
       // Handle meal description requests
       if (describeMealMatch) {
         console.log("🍽️ Meal description request detected:", {
@@ -342,10 +622,13 @@ function VoiceInput() {
           `📋 Task range command detected: Task ${startTask} to ${endTask}`
         );
 
-        // PRODUCTION: Early check - if no tasks exist, skip GPT call and database operations
-        if (tasks.length === 0) {
-          const noTasksMessage = "There are no tasks.";
-          console.log("⏸️ No tasks available, skipping GPT call");
+        // Filter to pending tasks only (to match what user sees on screen)
+        const pendingTasks = tasks.filter(t => t.status === 'pending');
+
+        // PRODUCTION: Early check - if no pending tasks exist, skip GPT call and database operations
+        if (pendingTasks.length === 0) {
+          const noTasksMessage = "There are no pending tasks.";
+          console.log("⏸️ No pending tasks available, skipping GPT call");
 
           if (ttsServiceRef.current) {
             await ttsServiceRef.current.speak(noTasksMessage, {
@@ -382,7 +665,8 @@ function VoiceInput() {
         setIsParsing(true);
         try {
           // Generate script using GPT for task range (only called if tasks exist)
-          const script = await generateTaskScript(tasks, {
+          // Use pendingTasks so task numbers match what user sees
+          const script = await generateTaskScript(pendingTasks, {
             startTask,
             endTask,
           });
@@ -432,10 +716,13 @@ function VoiceInput() {
         const taskNumber = parseInt(taskCommandWithNumberMatch[3]);
         console.log(`📋 Task command detected: Task ${taskNumber}`);
 
-        // PRODUCTION: Early check - if no tasks exist, skip GPT call and database operations
-        if (tasks.length === 0) {
-          const noTasksMessage = "There are no tasks.";
-          console.log("⏸️ No tasks available, skipping GPT call");
+        // Filter to pending tasks only (to match what user sees on screen)
+        const pendingTasks = tasks.filter(t => t.status === 'pending');
+
+        // PRODUCTION: Early check - if no pending tasks exist, skip GPT call and database operations
+        if (pendingTasks.length === 0) {
+          const noTasksMessage = "There are no pending tasks.";
+          console.log("⏸️ No pending tasks available, skipping GPT call");
 
           if (ttsServiceRef.current) {
             await ttsServiceRef.current.speak(noTasksMessage, {
@@ -462,7 +749,8 @@ function VoiceInput() {
         setIsParsing(true);
         try {
           // Generate script using GPT (only called if tasks exist)
-          const script = await generateTaskScript(tasks, { taskNumber });
+          // Use pendingTasks so task numbers match what user sees
+          const script = await generateTaskScript(pendingTasks, { taskNumber });
 
           // Speak the script
           if (ttsServiceRef.current) {
@@ -1752,6 +2040,43 @@ function VoiceInput() {
 
   return (
     <div className="flex flex-col items-center gap-6 py-12">
+      {/* Start Flight Button */}
+      <div className="w-full max-w-2xl mb-4">
+        <button
+          onClick={handleStartFlight}
+          disabled={isFlightStarted || isInitializingFlight}
+          className={`
+            w-full px-6 py-4 rounded-lg font-semibold text-lg transition-all
+            ${isFlightStarted 
+              ? 'bg-green-600 text-white cursor-default' 
+              : isInitializingFlight
+              ? 'bg-blue-400 text-white cursor-wait'
+              : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg'
+            }
+          `}
+        >
+          {isInitializingFlight ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 size={20} className="animate-spin" />
+              Starting Flight...
+            </span>
+          ) : isFlightStarted ? (
+            <span className="flex items-center justify-center gap-2">
+              ✅ Flight Started
+            </span>
+          ) : (
+            <span className="flex items-center justify-center gap-2">
+              🛫 Start Flight
+            </span>
+          )}
+        </button>
+        {isFlightStarted && (
+          <p className="text-center text-white/80 text-sm mt-2">
+            Flight tasks initialized from passenger manifest
+          </p>
+        )}
+      </div>
+
       {/* Microphone Test Toggle - Development Only */}
       {import.meta.env.DEV && (
         <div className="w-full max-w-2xl">

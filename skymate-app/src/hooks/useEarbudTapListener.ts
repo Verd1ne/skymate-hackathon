@@ -65,25 +65,11 @@ export function useEarbudTapListener(
     }
 
     // Handler toggles between start/stop based on current state (uses refs)
-    const handleAction = (details: any) => {
+    const handleAction = (_details: any) => {
       console.log("🎧 Earbud tap detected via Media Session API");
       
-      // CRITICAL FIX: Guard against uninitialized callbacks
-      if (!onStartRef.current || !onStopRef.current) {
-        console.warn("⚠️ Earbud tap ignored - callbacks not initialized yet");
-        // Retry after a short delay to handle race conditions
-        setTimeout(() => {
-          if (onStartRef.current && onStopRef.current) {
-            console.log("🎧 Retrying earbud tap after initialization...");
-            handleAction(details);
-          } else {
-            console.error("❌ Earbud tap failed - callbacks still not available");
-          }
-        }, 100);
-        return;
-      }
-      
       // Read from refs to get latest values without re-registering handlers
+      // Note: Callbacks are always defined since they're passed as required parameters
       if (isListeningRef.current) {
         console.log("🎧 Stopping session");
         onStopRef.current();

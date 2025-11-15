@@ -2,7 +2,6 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import {
 	Crown,
 	ClipboardList,
-	Sparkles,
 	Headphones,
 	Mic,
 	Map as MapIcon,

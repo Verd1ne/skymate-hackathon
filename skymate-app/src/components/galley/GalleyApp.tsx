@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { UtensilsCrossed, Coffee, Package } from 'lucide-react';
-import MealQueue from './MealQueue';
-import BeverageQueue from './BeverageQueue';
-import InventoryPanelFirebase from './InventoryPanelFirebase';
+import { useState } from "react";
+import { Coffee, Package } from "lucide-react";
+import BeverageQueue from "./BeverageQueue";
+import InventoryPanelFirebase from "./InventoryPanelFirebase";
 
 function GalleyApp() {
-  const [activeTab, setActiveTab] = useState<'meals' | 'beverages' | 'inventory'>('inventory');
+  const [activeTab, setActiveTab] = useState<"beverages" | "inventory">(
+    "inventory"
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-cyan-900">
@@ -17,36 +18,26 @@ function GalleyApp() {
 
       {/* Main Content */}
       <main className="p-6">
-        {activeTab === 'meals' && <MealQueue />}
-        {activeTab === 'beverages' && <BeverageQueue />}
-        {activeTab === 'inventory' && <InventoryPanelFirebase />}
+        {activeTab === "beverages" && <BeverageQueue />}
+        {activeTab === "inventory" && <InventoryPanelFirebase />}
       </main>
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white/10 backdrop-blur-lg border-t border-white/20">
         <div className="flex justify-around p-4">
           <button
-            onClick={() => setActiveTab('meals')}
+            onClick={() => setActiveTab("beverages")}
             className={`flex flex-col items-center gap-1 ${
-              activeTab === 'meals' ? 'text-white' : 'text-white/50'
-            }`}
-          >
-            <UtensilsCrossed size={24} />
-            <span className="text-xs">Meals</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('beverages')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'beverages' ? 'text-white' : 'text-white/50'
+              activeTab === "beverages" ? "text-white" : "text-white/50"
             }`}
           >
             <Coffee size={24} />
             <span className="text-xs">Beverages</span>
           </button>
           <button
-            onClick={() => setActiveTab('inventory')}
+            onClick={() => setActiveTab("inventory")}
             className={`flex flex-col items-center gap-1 ${
-              activeTab === 'inventory' ? 'text-white' : 'text-white/50'
+              activeTab === "inventory" ? "text-white" : "text-white/50"
             }`}
           >
             <Package size={24} />
@@ -59,4 +50,3 @@ function GalleyApp() {
 }
 
 export default GalleyApp;
-

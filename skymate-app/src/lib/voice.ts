@@ -4282,6 +4282,115 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	}
 
 	/**
+	 * Simulate wake word detection (e.g., from button press or earbud tap)
+	 * Uses the same reliable path as voice wake-word detection
+	 * 
+	 * This allows alternative activation methods (buttons, shortcuts, gestures)
+	 * to trigger the exact same proven wake-word flow, ensuring 100% consistency
+	 * and reliability.
+	 */
+	simulateWakeWordDetection(): void {
+		if (!this.isListening) {
+			this.log('warn', '⚠️ Cannot simulate wake word: not listening');
+			return;
+		}
+
+		// For Azure Speech, simulate interim result processing
+		if (this.useAzureSpeech) {
+			this.log('info', '🎯 Virtual wake word activated via button/tap (Azure Speech)');
+
+			const now = Date.now();
+
+			// Apply same debouncing as real wake word
+			const timeSinceLastWakeWord = now - this.lastWakeWordTime;
+			if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE) {
+				this.log('debug', `⏸️ Wake word simulation debounced (${timeSinceLastWakeWord}ms since last)`);
+				return;
+			}
+
+			this.lastWakeWordTime = now;
+
+			// Reset state and start new session (same as real wake word)
+			this.resetWakeWordState();
+			this.speechBuffer = [];
+			const session = this.startNewSession();
+			this.metrics.wakeWordDetections++;
+			this.wakeWordDetected = true;
+			this.wakeWordDetectedTime = now;
+
+			// Trigger confirmation audio (only once per wake word)
+			if (this.onWakeWordConfirmation && !this.wakeWordConfirmationPlayed) {
+				this.wakeWordConfirmationPlayed = true;
+				this.onWakeWordConfirmation();
+			}
+
+			// Set timeout for continuation (same as real wake word)
+			this.clearContinuationTimeout();
+			const sessionForTimeout = session;
+			this.continuationTimeout = setTimeout(() => {
+				if (
+					sessionForTimeout &&
+					!sessionForTimeout.processed &&
+					!this.pendingTranscript
+				) {
+					this.log('info', '⏰ No speech within 8s after button press, resetting');
+					this.resetWakeWordState();
+				}
+			}, TIMING_CONSTANTS.WAKE_WORD_TIMEOUT);
+
+			this.log('info', '✅ Virtual wake word session started successfully', {
+				sessionId: session.id,
+				method: 'button/tap',
+			});
+		} else {
+			// For Web Speech API, use same flow
+			this.log('info', '🎯 Virtual wake word activated via button/tap (Web Speech)');
+
+			const now = Date.now();
+
+			// Apply same debouncing
+			const timeSinceLastWakeWord = now - this.lastWakeWordTime;
+			if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE) {
+				this.log('debug', `⏸️ Wake word simulation debounced (${timeSinceLastWakeWord}ms since last)`);
+				return;
+			}
+
+			this.lastWakeWordTime = now;
+
+			// Reset and start new session
+			this.resetWakeWordState();
+			const session = this.startNewSession();
+			this.metrics.wakeWordDetections++;
+			this.wakeWordDetected = true;
+			this.wakeWordDetectedTime = now;
+
+			// Trigger confirmation audio
+			if (this.onWakeWordConfirmation && !this.wakeWordConfirmationPlayed) {
+				this.wakeWordConfirmationPlayed = true;
+				this.onWakeWordConfirmation();
+			}
+
+			// Set timeout for continuation
+			this.clearContinuationTimeout();
+			this.continuationTimeout = setTimeout(() => {
+				if (
+					this.wakeWordDetected &&
+					!this.pendingTranscript &&
+					this.currentSession
+				) {
+					this.log('info', '⏰ No speech within 8s after button press, resetting');
+					this.resetWakeWordState();
+				}
+			}, TIMING_CONSTANTS.WAKE_WORD_TIMEOUT);
+
+			this.log('info', '✅ Virtual wake word session started successfully', {
+				sessionId: session.id,
+				method: 'button/tap',
+			});
+		}
+	}
+
+	/**
 	 * Cleanup method for production (call on component unmount)
 	 */
 	cleanup(): void {

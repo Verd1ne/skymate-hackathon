@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import CrewApp from './crew/CrewApp';
 import GalleyApp from './galley/GalleyApp';
-import { Plane, UtensilsCrossed } from 'lucide-react';
+import TTSPlayground from './tts/TTSPlayground';
+import { Megaphone, Plane, UtensilsCrossed } from 'lucide-react';
 import { ToastProvider } from './shared/ToastContainer';
 
 function AppSwitcher() {
-  const [activeApp, setActiveApp] = useState<'crew' | 'galley'>('crew');
+  const [activeApp, setActiveApp] = useState<'crew' | 'galley' | 'tts'>('crew');
 
   return (
     <ToastProvider>
@@ -35,12 +36,25 @@ function AppSwitcher() {
               <UtensilsCrossed size={20} />
               <span>Galley App</span>
             </button>
+            <button
+              onClick={() => setActiveApp('tts')}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${
+                activeApp === 'tts'
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20'
+              }`}
+            >
+              <Megaphone size={20} />
+              <span>TTS Playground</span>
+            </button>
           </div>
         </div>
 
         {/* App Content */}
         <div className="pt-16">
-          {activeApp === 'crew' ? <CrewApp /> : <GalleyApp />}
+          {activeApp === 'crew' && <CrewApp />}
+          {activeApp === 'galley' && <GalleyApp />}
+          {activeApp === 'tts' && <TTSPlayground />}
         </div>
       </div>
     </ToastProvider>

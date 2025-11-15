@@ -17,6 +17,11 @@ import { useToast } from "../shared/ToastContainer";
 import { initializeFlightTasks } from "../../lib/flightInitialization";
 import { useEarbudTapListener } from "../../hooks/useEarbudTapListener";
 
+type MembershipFormatterKey =
+	| "formatAllPriorityMembers"
+	| "formatAllGoldClassMembers"
+	| "formatAllDiamondClassMembers";
+
 function VoiceInput() {
 	const [isListening, setIsListening] = useState(false);
 	const [isMicReady, setIsMicReady] = useState(false);
@@ -784,6 +789,17 @@ function VoiceInput() {
 				normalizedText.match(specialRequestsPattern) ||
 				normalizedText.match(specialRequestsPatternReversed);
 
+			const buildTierCommandPattern = (tierExpression: string) =>
+				new RegExp(
+					`\\b(who|which|list|show|display|tell|what|give|info|information)(?:\\s+me)?(?:\\s+is)?(?:\\s+are)?(?:\\s+the)?(?:\\s+all)?(?:\\s+${tierExpression}\\s+members?)\\b`,
+					"i"
+				);
+			const buildTierCommandPatternReversed = (tierExpression: string) =>
+				new RegExp(
+					`\\b(?:members?|member)\\s+${tierExpression}(?:\\s+who|\\s+which|\\s+list|\\s+show|\\s+display|\\s+tell|\\s+what|\\s+give|\\s+info|\\s+information)`,
+					"i"
+				);
+
 			// NEW: Check for priority members list command (e.g., "who is priority member", "list priority members")
 			// ENHANCED: Also handle reversed word order from speech recognition (e.g., "members priority who is")
 			const priorityMembersPattern =
@@ -794,10 +810,41 @@ function VoiceInput() {
 				normalizedText.match(priorityMembersPattern) ||
 				normalizedText.match(priorityMembersPatternReversed);
 
+			// NEW: Gold class members command
+			const goldMembersPattern = buildTierCommandPattern("gold(?:\\s+class)?");
+			const goldMembersPatternReversed =
+				buildTierCommandPatternReversed("gold(?:\\s+class)?");
+			const goldMembersMatch =
+				normalizedText.match(goldMembersPattern) ||
+				normalizedText.match(goldMembersPatternReversed);
+
+			// NEW: Diamond class members command
+			const diamondMembersPattern = buildTierCommandPattern(
+				"diamond(?:\\s+class)?"
+			);
+			const diamondMembersPatternReversed = buildTierCommandPatternReversed(
+				"diamond(?:\\s+class)?"
+			);
+			const diamondMembersMatch =
+				normalizedText.match(diamondMembersPattern) ||
+				normalizedText.match(diamondMembersPatternReversed);
+
 			console.log(`🔍 Priority members pattern test:`, {
 				text: normalizedText,
 				match: priorityMembersMatch ? "MATCH" : "NO MATCH",
 				pattern: "priority members pattern",
+			});
+
+			console.log(`🔍 Gold class members pattern test:`, {
+				text: normalizedText,
+				match: goldMembersMatch ? "MATCH" : "NO MATCH",
+				pattern: "gold class members pattern",
+			});
+
+			console.log(`🔍 Diamond class members pattern test:`, {
+				text: normalizedText,
+				match: diamondMembersMatch ? "MATCH" : "NO MATCH",
+				pattern: "diamond class members pattern",
 			});
 
 			// NEW: Check for team introduction command (e.g., "introduce our team", "introduce the team", "introduce yourself")
@@ -1034,64 +1081,111 @@ function VoiceInput() {
 				return; // Exit early for special requests list command
 			}
 
-			// Handle priority members list command
-			if (priorityMembersMatch) {
-				console.log("⭐ Priority members list command detected:", {
+			const handleMembershipListCommand = async (
+				match: RegExpMatchArray | null,
+				formatterKey: MembershipFormatterKey,
+				logLabel: string
+			): Promise<boolean> => {
+				if (!match) return false;
+
+				const labelLower = logLabel.toLowerCase();
+				console.log(`⭐ ${logLabel} list command detected:`, {
 					command: normalizedText,
 				});
 
-				// Import passenger data
-				const { formatAllPriorityMembers } = await import(
-					"../../data/passengerData"
-				);
+				try {
+					const passengerData = await import("../../data/passengerData");
+					const formatter = passengerData[formatterKey] as
+						| (() => string)
+						| undefined;
 
-				const priorityMembersText = formatAllPriorityMembers();
-
-				console.log(`✅ Found priority members: ${priorityMembersText}`);
-
-				// Play TTS with priority members
-				if (ttsServiceRef.current) {
-					try {
-						console.log(`🔊 Speaking priority members: ${priorityMembersText}`);
-
-						await ttsServiceRef.current.speak(priorityMembersText, {
-							rate: 1.0,
-							onEnd: () => {
-								console.log("✅ Priority members spoken successfully");
-							},
-							onError: (error) => {
-								console.error("❌ TTS Error for priority members:", error);
-							},
-						});
-					} catch (error) {
-						console.error("❌ Error playing priority members:", error);
+					if (typeof formatter !== "function") {
+						console.error(
+							`❌ Formatter ${formatterKey} not found for ${logLabel}`
+						);
+						return false;
 					}
-				}
 
-				// Reset state and restart listening
-				setTranscript("");
-				setParsedIntent(null);
-				setIsListening(false);
-				setIsMicReady(false);
-				hasAutoCreatedRef.current = false;
+					const membersText = formatter();
 
-				// UNLOCK SESSION: Command complete
-				isProcessingSessionRef.current = false;
-				console.log(`🔓 Session unlocked (priority members)`);
+					console.log(`✅ Found ${labelLower}: ${membersText}`);
 
-				// Restart continuous listening
-				if (voiceServiceRef.current && wakeWordCallbackRef.current) {
-					createTimeout(() => {
-						if (voiceServiceRef.current && wakeWordCallbackRef.current) {
-							voiceServiceRef.current.ensureContinuousListening(
-								wakeWordCallbackRef.current,
-								wakeWordOnlyCallbackRef.current || undefined
-							);
+					if (ttsServiceRef.current) {
+						try {
+							console.log(`🔊 Speaking ${labelLower}: ${membersText}`);
+
+							await ttsServiceRef.current.speak(membersText, {
+								rate: 1.0,
+								onEnd: () => {
+									console.log(`✅ ${logLabel} spoken successfully`);
+								},
+								onError: (error) => {
+									console.error(`❌ TTS Error for ${labelLower}:`, error);
+								},
+							});
+						} catch (error) {
+							console.error(`❌ Error playing ${labelLower}:`, error);
 						}
-					}, 100);
-				}
+					}
 
-				return; // Exit early for priority members list command
+					// Reset state and restart listening
+					setTranscript("");
+					setParsedIntent(null);
+					setIsListening(false);
+					setIsMicReady(false);
+					hasAutoCreatedRef.current = false;
+
+					// UNLOCK SESSION: Command complete
+					isProcessingSessionRef.current = false;
+					console.log(`🔓 Session unlocked (${labelLower})`);
+
+					// Restart continuous listening
+					if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+						createTimeout(() => {
+							if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+								voiceServiceRef.current.ensureContinuousListening(
+									wakeWordCallbackRef.current,
+									wakeWordOnlyCallbackRef.current || undefined
+								);
+							}
+						}, 100);
+					}
+
+					return true;
+				} catch (error) {
+					console.error(`❌ Failed to handle ${labelLower} command:`, error);
+					return false;
+				}
+			};
+
+			if (
+				await handleMembershipListCommand(
+					priorityMembersMatch,
+					"formatAllPriorityMembers",
+					"Priority members"
+				)
+			) {
+				return;
+			}
+
+			if (
+				await handleMembershipListCommand(
+					goldMembersMatch,
+					"formatAllGoldClassMembers",
+					"Gold class members"
+				)
+			) {
+				return;
+			}
+
+			if (
+				await handleMembershipListCommand(
+					diamondMembersMatch,
+					"formatAllDiamondClassMembers",
+					"Diamond class members"
+				)
+			) {
+				return;
 			}
 
 			// Handle team introduction command

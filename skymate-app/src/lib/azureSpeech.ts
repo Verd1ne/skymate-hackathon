@@ -48,7 +48,7 @@ const AVIATION_PHRASE_HINTS = [
 	"sky-mate",
 	"sky make",
 	"Sky Mate",
-	"climates",  // CRITICAL: Common misrecognition
+	"climates", // CRITICAL: Common misrecognition
 	"climate",
 	"sky mates",
 	"sky made",
@@ -56,7 +56,7 @@ const AVIATION_PHRASE_HINTS = [
 	"sky meet",
 	"primates",
 	"estimates",
-	"I mean",    // CRITICAL: Another common misrecognition
+	"I mean", // CRITICAL: Another common misrecognition
 	"I'm",
 	// Seat letters (phonetic variants) - EXPANDED
 	"seat A",
@@ -66,11 +66,11 @@ const AVIATION_PHRASE_HINTS = [
 	"seat E",
 	"seat F",
 	"seat eight", // "A" misheard as "eight"
-	"seat bee",   // "B" phonetic
-	"seat see",   // "C" phonetic
-	"seat dee",   // "D" phonetic
-	"seat eve",   // "E" phonetic
-	"seat eff",   // "F" phonetic
+	"seat bee", // "B" phonetic
+	"seat see", // "C" phonetic
+	"seat dee", // "D" phonetic
+	"seat eve", // "E" phonetic
+	"seat eff", // "F" phonetic
 	// Actions (most common) - EXPANDED with singular forms and task commands
 	"wants",
 	"want",
@@ -138,6 +138,22 @@ const AVIATION_PHRASE_HINTS = [
 	"show priority members",
 	"which passengers are priority members",
 	"priority members",
+	// Gold class members commands
+	"who is gold class member",
+	"who are gold class members",
+	"list gold class members",
+	"show gold class members",
+	"which passengers are gold class members",
+	"gold class members",
+	"gold members",
+	// Diamond class members commands
+	"who is diamond class member",
+	"who are diamond class members",
+	"list diamond class members",
+	"show diamond class members",
+	"which passengers are diamond class members",
+	"diamond class members",
+	"diamond members",
 	// Meals (core items) - EXPANDED with missing items
 	"chicken meal",
 	"beef meal",
@@ -261,34 +277,164 @@ const AVIATION_PHRASE_HINTS = [
 	"needs the",
 	// Demo seat numbers (expanded for better coverage)
 	// Single digit seats
-	"1A", "1B", "1C", "1D", "1E", "1F",
-	"2A", "2B", "2C", "2D", "2E", "2F",
-	"3A", "3B", "3C", "3D", "3E", "3F",
-	"4A", "4B", "4C", "4D", "4E", "4F",
-	"5A", "5B", "5C", "5D", "5E", "5F",
-	"6A", "6B", "6C", "6D", "6E", "6F",
-	"7A", "7B", "7C", "7D", "7E", "7F",
-	"8A", "8B", "8C", "8D", "8E", "8F",
-	"9A", "9B", "9C", "9D", "9E", "9F",
+	"1A",
+	"1B",
+	"1C",
+	"1D",
+	"1E",
+	"1F",
+	"2A",
+	"2B",
+	"2C",
+	"2D",
+	"2E",
+	"2F",
+	"3A",
+	"3B",
+	"3C",
+	"3D",
+	"3E",
+	"3F",
+	"4A",
+	"4B",
+	"4C",
+	"4D",
+	"4E",
+	"4F",
+	"5A",
+	"5B",
+	"5C",
+	"5D",
+	"5E",
+	"5F",
+	"6A",
+	"6B",
+	"6C",
+	"6D",
+	"6E",
+	"6F",
+	"7A",
+	"7B",
+	"7C",
+	"7D",
+	"7E",
+	"7F",
+	"8A",
+	"8B",
+	"8C",
+	"8D",
+	"8E",
+	"8F",
+	"9A",
+	"9B",
+	"9C",
+	"9D",
+	"9E",
+	"9F",
 	// Common demo seats (10-30)
-	"10A", "10B", "10C", "10D", "10E", "10F",
-	"12A", "12B", "12C", "12D", "12E", "12F",
-	"15A", "15B", "15C", "15D", "15E", "15F",
-	"20A", "20B", "20C", "20D", "20E", "20F",
-	"23A", "23B", "23C", "23D", "23E", "23F",
-	"25A", "25B", "25C", "25D", "25E", "25F",
-	"30A", "30B", "30C", "30D", "30E", "30F",
+	"10A",
+	"10B",
+	"10C",
+	"10D",
+	"10E",
+	"10F",
+	"12A",
+	"12B",
+	"12C",
+	"12D",
+	"12E",
+	"12F",
+	"15A",
+	"15B",
+	"15C",
+	"15D",
+	"15E",
+	"15F",
+	"20A",
+	"20B",
+	"20C",
+	"20D",
+	"20E",
+	"20F",
+	"23A",
+	"23B",
+	"23C",
+	"23D",
+	"23E",
+	"23F",
+	"25A",
+	"25B",
+	"25C",
+	"25D",
+	"25E",
+	"25F",
+	"30A",
+	"30B",
+	"30C",
+	"30D",
+	"30E",
+	"30F",
 	// CRITICAL FIX: Added mid-range seats 31-40 (huge gap fixed!)
-	"31A", "31B", "31C", "31D", "31E", "31F",
-	"32A", "32B", "32C", "32D", "32E", "32F",
-	"33A", "33B", "33C", "33D", "33E", "33F",
-	"34A", "34B", "34C", "34D", "34E", "34F",
-	"35A", "35B", "35C", "35D", "35E", "35F",
-	"36A", "36B", "36C", "36D", "36E", "36F",
-	"37A", "37B", "37C", "37D", "37E", "37F",
-	"38A", "38B", "38C", "38D", "38E", "38F",
-	"39A", "39B", "39C", "39D", "39E", "39F",
-	"40A", "40B", "40C", "40D", "40E", "40F",
+	"31A",
+	"31B",
+	"31C",
+	"31D",
+	"31E",
+	"31F",
+	"32A",
+	"32B",
+	"32C",
+	"32D",
+	"32E",
+	"32F",
+	"33A",
+	"33B",
+	"33C",
+	"33D",
+	"33E",
+	"33F",
+	"34A",
+	"34B",
+	"34C",
+	"34D",
+	"34E",
+	"34F",
+	"35A",
+	"35B",
+	"35C",
+	"35D",
+	"35E",
+	"35F",
+	"36A",
+	"36B",
+	"36C",
+	"36D",
+	"36E",
+	"36F",
+	"37A",
+	"37B",
+	"37C",
+	"37D",
+	"37E",
+	"37F",
+	"38A",
+	"38B",
+	"38C",
+	"38D",
+	"38E",
+	"38F",
+	"39A",
+	"39B",
+	"39C",
+	"39D",
+	"39E",
+	"39F",
+	"40A",
+	"40B",
+	"40C",
+	"40D",
+	"40E",
+	"40F",
 	// Phonetic seat number patterns
 	"thirty two A",
 	"thirty two B",
@@ -450,13 +596,17 @@ export class AzureSpeechService {
 				}
 			} catch (e) {
 				// JSON parse failed, use conservative default
-				console.warn("⚠️ Azure confidence JSON parsing failed, using conservative fallback (0.5)");
+				console.warn(
+					"⚠️ Azure confidence JSON parsing failed, using conservative fallback (0.5)"
+				);
 			}
 		}
 
 		// OPTIMIZATION: Lower fallback to 0.5 (50%) to be conservative when confidence data is unavailable
 		// This prevents poor recognition results from being accepted with artificially high confidence
-		console.warn("⚠️ Using fallback confidence (0.5) - detailed confidence unavailable");
+		console.warn(
+			"⚠️ Using fallback confidence (0.5) - detailed confidence unavailable"
+		);
 		return 0.5;
 	}
 
@@ -535,7 +685,7 @@ export class AzureSpeechService {
 			try {
 				await this.cleanupRecognizer(); // Proper cleanup
 				// Wait a bit to ensure cleanup is complete
-				await new Promise(resolve => setTimeout(resolve, 100));
+				await new Promise((resolve) => setTimeout(resolve, 100));
 			} catch (cleanupError) {
 				console.warn("⚠️ Cleanup error (non-critical):", cleanupError);
 			}
@@ -634,7 +784,7 @@ export class AzureSpeechService {
 						if (text.trim()) {
 							// Track activity time for idle detection
 							this.lastActivityTime = Date.now();
-							
+
 							// Extract confidence from interim result
 							const confidence = this.extractDetailedConfidence(e.result);
 							onResult(text, false, confidence);
@@ -655,7 +805,7 @@ export class AzureSpeechService {
 						if (text.trim()) {
 							// Track activity time for idle detection
 							this.lastActivityTime = Date.now();
-							
+
 							// Extract detailed confidence from JSON result
 							const confidence = this.extractDetailedConfidence(e.result);
 
@@ -794,7 +944,7 @@ export class AzureSpeechService {
 
 				// Track initial activity time
 				this.lastActivityTime = Date.now();
-				
+
 				// PRODUCTION: Start/reset health monitoring after successful start
 				// This ensures the 4-minute timer starts fresh with each new connection
 				this.startHealthMonitoring();
@@ -966,13 +1116,15 @@ export class AzureSpeechService {
 		this.idleTimeoutPrevention = setTimeout(async () => {
 			if (this.isListening && this.recognizer && !this.isRestarting) {
 				const timeSinceActivity = Date.now() - this.lastActivityTime;
-				
+
 				// Only reconnect if there's been genuine inactivity
 				if (timeSinceActivity >= this.IDLE_TIMEOUT_THRESHOLD) {
 					console.log(
-						`🔄 Reconnecting after ${Math.round(timeSinceActivity / 1000)}s of inactivity...`
+						`🔄 Reconnecting after ${Math.round(
+							timeSinceActivity / 1000
+						)}s of inactivity...`
 					);
-					
+
 					// Restart connection before idle timeout
 					this.isRestarting = true;
 					this.lastRestartTime = Date.now();
@@ -996,7 +1148,9 @@ export class AzureSpeechService {
 					}
 				} else {
 					console.log(
-						`✅ Connection active (last activity ${Math.round(timeSinceActivity / 1000)}s ago), no reconnection needed`
+						`✅ Connection active (last activity ${Math.round(
+							timeSinceActivity / 1000
+						)}s ago), no reconnection needed`
 					);
 					// Reschedule check for later if still active
 					if (this.isListening) {
@@ -1013,7 +1167,7 @@ export class AzureSpeechService {
 	 */
 	private async cleanupRecognizer(): Promise<void> {
 		const hadRecognizer = !!this.recognizer;
-		
+
 		if (this.recognizer) {
 			try {
 				// Stop recognition first
@@ -1051,7 +1205,7 @@ export class AzureSpeechService {
 		}
 
 		this.isListening = false;
-		
+
 		if (hadRecognizer) {
 			console.log("✅ Cleanup complete");
 		}

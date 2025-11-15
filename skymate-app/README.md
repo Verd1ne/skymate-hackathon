@@ -11,6 +11,9 @@ A modern flight assistant application built with React, TypeScript, and Vite.
 - 🔊 **Audio Feedback** - Spoken confirmations for all actions
 - 👥 **Priority Management** - Smart task prioritization based on passenger status
 
+**New:**  
+- 🗣️ **AI Voice Playground** - A dedicated page where you can type any announcement and have Azure Speech read it aloud, complete with speed/pitch/volume controls for rapid iteration.
+
 ## Setup
 
 1. Install dependencies:
@@ -33,6 +36,8 @@ VITE_AZURE_SPEECH_REGION=your_azure_region
 ```bash
 npm run dev
 ```
+
+4. Open the top navigation switcher in the running app and pick **TTS Playground** to try the text-to-speech page. Enter any copy, tweak the sliders, and hit **Speak**.
 
 ## Project Structure
 

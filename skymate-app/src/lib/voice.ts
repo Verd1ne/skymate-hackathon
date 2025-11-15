@@ -3598,6 +3598,18 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						afterWakeWord
 					);
 
+				// PRODUCTION: Gold class members command
+				const isGoldMembersCommand =
+					/\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+gold(?:\s+class)?\s+members?)\b/i.test(
+						afterWakeWord
+					);
+
+				// PRODUCTION: Diamond class members command
+				const isDiamondMembersCommand =
+					/\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+diamond(?:\s+class)?\s+members?)\b/i.test(
+						afterWakeWord
+					);
+
 				// PRODUCTION: Team introduction command
 				const isTeamIntroCommand =
 				/\b(introduce|show|tell|display|present)(?:\s+me)?(?:\s+(?:our|the|yourself))?\s*(?:team)?\b/i.test(
@@ -3654,6 +3666,8 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						isSeatInfoCommand ||
 						isSpecialRequestsCommand ||
 						isPriorityMembersCommand ||
+						isGoldMembersCommand ||
+						isDiamondMembersCommand ||
 						(hasSeatPattern && (hasItemPattern || hasMeaningfulContent));
 
 						if (looksComplete) {
@@ -3679,8 +3693,8 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					// Process with minimal delay (just to ensure speech is complete)
 					if (this.speechBufferTimer) clearTimeout(this.speechBufferTimer);
 					
-					// Use faster processing for seat info, describe, special requests, priority members, team intro, and task commands
-					const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand || isTeamIntroCommand) 
+					// Use faster processing for seat info, describe, special requests, membership queries, team intro, and task commands
+					const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand || isGoldMembersCommand || isDiamondMembersCommand || isTeamIntroCommand) 
 							? 100  // Very fast for simple lookup commands
 							: TIMING_CONSTANTS.COMPLETE_REQUEST_DELAY;
 						
@@ -5213,6 +5227,8 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					isSeatInfoCommand ||
 					isSpecialRequestsCommand ||
 					isPriorityMembersCommand ||
+					isGoldMembersCommand ||
+					isDiamondMembersCommand ||
 					(hasSeatPattern && (hasItemPattern || hasMeaningfulContent));
 
 				session.transcript = afterWakeWord;
@@ -5235,8 +5251,8 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 				// PRODUCTION: Store session in closure to ensure it's available when timer fires
 				const sessionToProcess = session;
 
-				// Use faster processing for seat info, describe, special requests, priority members, and task commands
-				const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand) 
+				// Use faster processing for seat info, describe, special requests, membership queries, and task commands
+				const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand || isGoldMembersCommand || isDiamondMembersCommand) 
 					? 100  // Very fast for simple lookup commands
 					: TIMING_CONSTANTS.COMPLETE_REQUEST_DELAY;
 
@@ -5717,6 +5733,10 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	const specialRequestsPattern = /\b(remind|tell|show|display|list|what|give|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+the)?(?:\s+all)?(?:\s+special\s*requests?)\b/i;
 	// NEW: Priority members list command (e.g., "who is priority member", "list priority members")
 	const priorityMembersPattern = /\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+priority\s*members?)\b/i;
+	// NEW: Gold class members list command
+	const goldMembersPattern = /\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+gold(?:\s+class)?\s+members?)\b/i;
+	// NEW: Diamond class members list command
+	const diamondMembersPattern = /\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+diamond(?:\s+class)?\s+members?)\b/i;
 	// NEW: Team introduction command (e.g., "introduce our team", "introduce the team", "introduce yourself")
 	const teamIntroPattern = /\b(introduce|show|tell|display|present)(?:\s+me)?(?:\s+(?:our|the|yourself))?\s*(?:team)?\b/i;
 	// Exclude task commands from being detected as seat info
@@ -5801,6 +5821,24 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 		session.processed = true;
 		onTranscript(session.transcript);
 		return; // Early exit
+	}
+
+	if (goldMembersPattern.test(session.transcript)) {
+		this.log("info", "🥇 Gold class members list command detected - bypassing scoring pipeline", {
+			transcript: session.transcript,
+		});
+		session.processed = true;
+		onTranscript(session.transcript);
+		return;
+	}
+
+	if (diamondMembersPattern.test(session.transcript)) {
+		this.log("info", "💎 Diamond class members list command detected - bypassing scoring pipeline", {
+			transcript: session.transcript,
+		});
+		session.processed = true;
+		onTranscript(session.transcript);
+		return;
 	}
 
 		this.log("info", "🔄 Processing request session through unified flow", {

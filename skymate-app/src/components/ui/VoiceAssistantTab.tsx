@@ -44,6 +44,16 @@ const voicePlaybook = [
 				phrase: "Skymate, remind me task 1 to 4",
 				tag: "Summaries",
 			},
+			{
+				title: "List all gold class members",
+				phrase: "Skymate, remind me gold class members",
+				tag: "Loyalty",
+			},
+			{
+				title: "List all diamond class members",
+				phrase: "Skymate, remind me diamond class members",
+				tag: "Loyalty",
+			},
 		],
 	},
 	{

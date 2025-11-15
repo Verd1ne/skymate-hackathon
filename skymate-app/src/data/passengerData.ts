@@ -1053,11 +1053,61 @@ export function formatAllSpecialRequests(): string {
  * Get all priority members
  * @returns Array of objects containing seat, passenger name, and meal preference
  */
-export function getAllPriorityMembers(): Array<{
+type PremiumMembershipTier = "gold" | "diamond";
+
+interface PremiumMemberSummary {
 	seatNumber: string;
 	passengerName: string;
 	mealPreference: string;
-}> {
+}
+
+function getFirstName(passengerName: string): string {
+	const trimmed = passengerName.trim();
+	if (!trimmed) return passengerName;
+	const [first] = trimmed.split(/\s+/);
+	return first || passengerName;
+}
+
+function getMembersByTier(tier: PremiumMembershipTier): PremiumMemberSummary[] {
+	return Object.values(PASSENGER_DATABASE)
+		.filter((passenger) => passenger.membershipTier === tier)
+		.map((passenger) => ({
+			seatNumber: passenger.seatNumber,
+			passengerName: passenger.passengerName,
+			mealPreference: passenger.mealPreference,
+		}))
+		.sort((a, b) => a.seatNumber.localeCompare(b.seatNumber));
+}
+
+function formatMembersByTier(
+	tier: PremiumMembershipTier,
+	labels: { singular: string; plural: string },
+	options?: {
+		listFormatter?: (member: PremiumMemberSummary) => string;
+		separator?: string;
+	}
+): string {
+	const members = getMembersByTier(tier);
+
+	if (!members.length) {
+		return `There are no ${labels.plural} on this flight.`;
+	}
+
+	const listFormatter =
+		options?.listFormatter ??
+		((member: PremiumMemberSummary) =>
+			`Seat ${member.seatNumber}, ${member.passengerName}`);
+	const separator = options?.separator ?? ". ";
+
+	const intro = `There ${members.length === 1 ? "is" : "are"} ${
+		members.length
+	} ${members.length === 1 ? labels.singular : labels.plural} on this flight: `;
+	const list = members.map(listFormatter).join(separator);
+
+	return intro + list + ".";
+}
+
+export function getAllPriorityMembers(): PremiumMemberSummary[] {
 	return Object.values(PASSENGER_DATABASE)
 		.filter((passenger) => passenger.priorityMember === true)
 		.map((passenger) => ({
@@ -1066,6 +1116,14 @@ export function getAllPriorityMembers(): Array<{
 			mealPreference: passenger.mealPreference,
 		}))
 		.sort((a, b) => a.seatNumber.localeCompare(b.seatNumber));
+}
+
+export function getAllGoldClassMembers(): PremiumMemberSummary[] {
+	return getMembersByTier("gold");
+}
+
+export function getAllDiamondClassMembers(): PremiumMemberSummary[] {
+	return getMembersByTier("diamond");
 }
 
 /**
@@ -1089,4 +1147,32 @@ export function formatAllPriorityMembers(): string {
 		.join(". ");
 
 	return intro + members + ".";
+}
+
+export function formatAllGoldClassMembers(): string {
+	return formatMembersByTier(
+		"gold",
+		{
+			singular: "gold class member",
+			plural: "gold class members",
+		},
+		{
+			listFormatter: (member) => getFirstName(member.passengerName),
+			separator: ", ",
+		}
+	);
+}
+
+export function formatAllDiamondClassMembers(): string {
+	return formatMembersByTier(
+		"diamond",
+		{
+			singular: "diamond class member",
+			plural: "diamond class members",
+		},
+		{
+			listFormatter: (member) => getFirstName(member.passengerName),
+			separator: ", ",
+		}
+	);
 }

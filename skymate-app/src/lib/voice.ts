@@ -3849,10 +3849,22 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 								return;
 							}
 
-							// Combine pending transcript with cleaned final result
-							const fullRequest = this.pendingTranscript
-								? `${this.pendingTranscript} ${cleanedContinuation}`.trim()
-								: cleanedContinuation;
+						// Combine pending transcript with cleaned final result
+						// CRITICAL: Check if continuation already contains pending transcript (cumulative result)
+						// Speech recognition can return cumulative results after pauses
+						let fullRequest: string;
+						if (this.pendingTranscript && cleanedContinuation.includes(this.pendingTranscript)) {
+							// Continuation is cumulative - already contains everything
+							fullRequest = cleanedContinuation;
+							console.log(`🔍 Detected cumulative continuation (already contains pending transcript)`);
+						} else if (this.pendingTranscript) {
+							// Continuation is incremental - combine with pending
+							fullRequest = `${this.pendingTranscript} ${cleanedContinuation}`.trim();
+							console.log(`🔍 Combining incremental continuation with pending transcript`);
+						} else {
+							// No pending transcript
+							fullRequest = cleanedContinuation;
+						}
 
 							// Final cleanup to remove any remaining wake word repetitions
 							const finalCleaned = fullRequest
@@ -4005,13 +4017,23 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 							.replace(/\s+/g, " ")
 							.trim();
 
-						if (cleanedContinuation) {
-							this.pendingTranscript = this.pendingTranscript
-								? `${this.pendingTranscript} ${cleanedContinuation}`.trim()
-								: cleanedContinuation;
+					if (cleanedContinuation) {
+						// CRITICAL: Check if continuation already contains pending transcript (cumulative result)
+						if (this.pendingTranscript && cleanedContinuation.includes(this.pendingTranscript)) {
+							// Continuation is cumulative - already contains everything
+							this.pendingTranscript = cleanedContinuation;
+							console.log(`🔍 [onend] Detected cumulative continuation (already contains pending transcript)`);
+						} else if (this.pendingTranscript) {
+							// Continuation is incremental - combine with pending
+							this.pendingTranscript = `${this.pendingTranscript} ${cleanedContinuation}`.trim();
+							console.log(`🔍 [onend] Combining incremental continuation with pending transcript`);
+						} else {
+							// No pending transcript
+							this.pendingTranscript = cleanedContinuation;
+						}
 
-							// Final cleanup to remove any remaining wake word repetitions
-							this.pendingTranscript = this.pendingTranscript
+						// Final cleanup to remove any remaining wake word repetitions
+						this.pendingTranscript = this.pendingTranscript
 								.replace(/^(skymate|sky\s+mate|sky-mate|sky\s+make)\s+/gi, "")
 								.replace(
 									/\s+(skymate|sky\s+mate|sky-mate|sky\s+make)(\s+|$)/gi,

@@ -2432,6 +2432,40 @@ function VoiceInput() {
         )}
       </button>
 
+      {/* Physical Button Alternative - Guaranteed 100% Reliability */}
+      <button
+        onClick={handleEarbudTap}
+        disabled={isParsing}
+        className={`
+          px-6 py-3 rounded-lg font-semibold text-white
+          transition-all duration-200 shadow-lg
+          ${
+            isListening
+              ? "bg-green-600 animate-pulse"
+              : "bg-indigo-600 hover:bg-indigo-700 hover:scale-105"
+          }
+          ${isParsing ? "opacity-50 cursor-not-allowed" : ""}
+          flex items-center gap-2
+        `}
+        title="Tap to activate voice input (same as saying 'Skymate')"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+        </svg>
+        {isListening ? "Listening..." : "Tap to Activate"}
+      </button>
+
       <p className="text-white text-sm">
         {isListening
           ? isMicReady
@@ -2439,6 +2473,12 @@ function VoiceInput() {
             : "Initializing microphone..."
           : "Always listening... (say 'Skymate' to activate)"}
         {isParsing && " - Processing..."}
+      </p>
+
+      {/* Helpful instructions for button activation */}
+      <p className="text-white/70 text-xs max-w-md text-center">
+        💡 Three ways to activate: Say "Skymate", tap the button above, or use
+        your earbud controls
       </p>
 
       {/* Voice Service Health Status - Development Only */}

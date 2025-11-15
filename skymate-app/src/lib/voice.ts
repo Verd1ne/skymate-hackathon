@@ -20,7 +20,7 @@ const TIMING_CONSTANTS = {
 	DEBOUNCE_DELAY: 150, // ms - debounce delay for rapid events
 	SPEECH_BUFFER_DELAY: 400, // ms - Reduced from 600ms for faster demo processing
 	COMPLETE_REQUEST_DELAY: 500, // ms - Increased to wait for complete words (not partial like "bl")
-	WAKE_WORD_DEBOUNCE: 300, // ms - OPTIMIZED: Reduced from 500ms for better responsiveness while still preventing double-triggers
+	WAKE_WORD_DEBOUNCE: 1500, // ms - OPTIMIZED: Long enough to group all interim + final results from single utterance
 } as const;
 
 // @ts-ignore - Kept for future use
@@ -2339,25 +2339,34 @@ export class VoiceService {
 	/**
 	 * Extract text after wake word - PRODUCTION: Unified helper
 	 * Handles wake word anywhere in text (e.g., "okay skymate 13A chicken")
+	 * CRITICAL: Removes ALL leading wake words (e.g., "skymate skymate 5A" → "5A")
 	 */
 	private extractTextAfterWakeWord(text: string): string {
-		// First, try to find wake word anywhere in the text and extract everything after it (including common misrecognitions)
+		// First, try to find LAST wake word in the text and extract everything after it
+		// This handles multiple wake words: "skymate skymate 5A chicken" → "5A chicken"
 		const wakeWordPattern =
-			/(skymate|sky\s+mate|sky-mate|sky\s+make|sky\s*(?:make|mate|m8|m\s*ate)|guy\s*(?:mate|made|make))\s+/i;
-		const match = text.match(wakeWordPattern);
+			/(skymate|sky\s+mate|sky-mate|sky\s+make|sky\s*(?:make|mate|m8|m\s*ate)|guy\s*(?:mate|made|make))\s+/gi;
+		
+		let lastMatch: RegExpExecArray | null = null;
+		let match: RegExpExecArray | null = null;
+		
+		// Find the LAST occurrence of wake word
+		while ((match = wakeWordPattern.exec(text)) !== null) {
+			lastMatch = match;
+		}
 
-		if (match && match.index !== undefined) {
-			// Extract everything after the wake word
+		if (lastMatch && lastMatch.index !== undefined) {
+			// Extract everything after the LAST wake word
 			const afterWakeWord = text
-				.substring(match.index + match[0].length)
+				.substring(lastMatch.index + lastMatch[0].length)
 				.trim();
 			return afterWakeWord;
 		}
 
-		// Fallback: remove from start if present
+		// Fallback: remove all wake words from start
 		return text
 			.replace(
-				/^.*?(skymate|sky\s+mate|sky-mate|sky\s+make|sky\s*(?:make|mate|m8|m\s*ate)|guy\s*(?:mate|made|make))\s+/i,
+				/^(?:skymate|sky\s+mate|sky-mate|sky\s+make|sky\s*(?:make|mate|m8|m\s*ate)|guy\s*(?:mate|made|make))\s+/gi,
 				""
 			)
 			.replace(/^(sky|guy)\s*/i, "")
@@ -2476,7 +2485,8 @@ export class VoiceService {
 		this.pendingTranscript = "";
 		this.wakeWordDetectedTime = 0;
 		this.speechBuffer = []; // Clear speech buffer
-		// NOTE: Don't reset wakeWordConfirmationPlayed here - it should only reset after processing
+		// NOTE: Don't reset wakeWordConfirmationPlayed here to prevent multiple beeps
+		// It will be reset after request processing or timeout
 
 		// Clear all timeouts
 		this.clearContinuationTimeout();
@@ -3242,6 +3252,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 										`⏰ Continuation timeout reached with no transcript, resetting wake word state`
 									);
 									this.resetWakeWordState();
+									this.wakeWordConfirmationPlayed = false; // Allow beep on next wake word
 								} else if (sessionForTimeout?.processed) {
 									this.log("debug", "Session already processed, skipping continuation timeout");
 								}
@@ -3375,14 +3386,39 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					if (isSubstantialRequest) {
 						// Substantial request detected - check if it looks complete
 
-						// PRODUCTION: Task commands are always complete - detect them early
-						const isTaskCommand =
-							/\b(remind|show|display|list|tell|what).*?\b(Task|task)\s+(\d+)\b/i.test(
-								afterWakeWord
-							);
+					// PRODUCTION: Task commands are always complete - detect them early
+					const isTaskCommand =
+						/\b(remind|show|display|list|tell|what).*?\b(Task|task)\s+(\d+)\b/i.test(
+							afterWakeWord
+						);
 
-						// If it has seat + item pattern, it's likely complete
-						const hasSeatPattern = /\b\d{1,2}[A-F]\b/i.test(afterWakeWord);
+					// PRODUCTION: Describe commands are always complete
+					const isDescribeCommand =
+						/^(describe|tell me about|what's in|what is in|info about|information about)\s+/i.test(
+							afterWakeWord
+						);
+
+				// PRODUCTION: Seat information commands are always complete
+				// Word "seat" is optional to support natural phrasing
+				const isSeatInfoCommand =
+					/\b(remind|tell|show|display|what|who|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+seat)?\s+\d{1,2}[A-F]\b/i.test(
+						afterWakeWord
+					) && !/\b(task|past|ask)\s+\d+/i.test(afterWakeWord); // Exclude task commands
+
+				// PRODUCTION: Special requests list command
+				const isSpecialRequestsCommand =
+					/\b(remind|tell|show|display|list|what|give|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+the)?(?:\s+all)?(?:\s+special\s*requests?)\b/i.test(
+						afterWakeWord
+					);
+
+				// PRODUCTION: Priority members list command
+				const isPriorityMembersCommand =
+					/\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+priority\s*members?)\b/i.test(
+						afterWakeWord
+					);
+
+				// If it has seat + item pattern, it's likely complete
+					const hasSeatPattern = /\b\d{1,2}[A-F]\b/i.test(afterWakeWord);
 
 						// PRODUCTION: Comprehensive item pattern - includes all items from vocabulary
 						// Meals, beverages, comfort items, assistance
@@ -3424,9 +3460,13 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 								); // Meaningful word
 							});
 
-						const looksComplete =
-							isTaskCommand ||
-							(hasSeatPattern && (hasItemPattern || hasMeaningfulContent));
+					const looksComplete =
+						isTaskCommand ||
+						isDescribeCommand ||
+						isSeatInfoCommand ||
+						isSpecialRequestsCommand ||
+						isPriorityMembersCommand ||
+						(hasSeatPattern && (hasItemPattern || hasMeaningfulContent));
 
 						if (looksComplete) {
 							// Complete request detected - process immediately with short buffer
@@ -3448,9 +3488,15 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 							// PRODUCTION: Store session in closure to ensure it's available when timer fires
 							const sessionToProcess = session;
 
-							// Process with minimal delay (just to ensure speech is complete)
-							if (this.speechBufferTimer) clearTimeout(this.speechBufferTimer);
-							this.speechBufferTimer = setTimeout(() => {
+					// Process with minimal delay (just to ensure speech is complete)
+					if (this.speechBufferTimer) clearTimeout(this.speechBufferTimer);
+					
+					// Use faster processing for seat info, describe, special requests, priority members, and task commands
+					const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand) 
+						? 100  // Very fast for simple lookup commands
+						: TIMING_CONSTANTS.COMPLETE_REQUEST_DELAY;
+						
+						this.speechBufferTimer = setTimeout(() => {
 								if (sessionToProcess && !sessionToProcess.processed) {
 									this.log(
 										"info",
@@ -3467,7 +3513,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 									this.resetWakeWordState();
 									this.speechBuffer = [];
 								}
-							}, TIMING_CONSTANTS.COMPLETE_REQUEST_DELAY);
+							}, processingDelay);
 
 							// Don't set continuation timeout for complete requests
 							this.clearContinuationTimeout();
@@ -3572,6 +3618,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 									}
 								);
 								this.resetWakeWordState();
+								this.wakeWordConfirmationPlayed = false; // Allow beep on next wake word
 							}
 						}, TIMING_CONSTANTS.WAKE_WORD_TIMEOUT);
 						return;
@@ -4610,6 +4657,31 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						afterWakeWord
 					);
 
+				// PRODUCTION: Describe commands are always complete
+				const isDescribeCommand =
+					/^(describe|tell me about|what's in|what is in|info about|information about)\s+/i.test(
+						afterWakeWord
+					);
+
+				// PRODUCTION: Seat information commands are always complete
+				// Word "seat" is optional to support natural phrasing
+				const isSeatInfoCommand =
+					/\b(remind|tell|show|display|what|who|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+seat)?\s+\d{1,2}[A-F]\b/i.test(
+						afterWakeWord
+					) && !/\b(task|past|ask)\s+\d+/i.test(afterWakeWord); // Exclude task commands
+
+				// PRODUCTION: Special requests list command
+				const isSpecialRequestsCommand =
+					/\b(remind|tell|show|display|list|what|give|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+the)?(?:\s+all)?(?:\s+special\s*requests?)\b/i.test(
+						afterWakeWord
+					);
+
+				// PRODUCTION: Priority members list command
+				const isPriorityMembersCommand =
+					/\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+priority\s*members?)\b/i.test(
+						afterWakeWord
+					);
+
 				// Check if request looks complete (has seat + item pattern)
 				const hasSeatPattern = /\b\d{1,2}[A-F]\b/i.test(afterWakeWord);
 
@@ -4644,6 +4716,10 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 
 				const looksComplete =
 					isTaskCommand ||
+					isDescribeCommand ||
+					isSeatInfoCommand ||
+					isSpecialRequestsCommand ||
+					isPriorityMembersCommand ||
 					(hasSeatPattern && (hasItemPattern || hasMeaningfulContent));
 
 				session.transcript = afterWakeWord;
@@ -4663,25 +4739,30 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					// CRITICAL: Set currentSession before timer to ensure it's available
 					this.currentSession = session;
 
-					// PRODUCTION: Store session in closure to ensure it's available when timer fires
-					const sessionToProcess = session;
+				// PRODUCTION: Store session in closure to ensure it's available when timer fires
+				const sessionToProcess = session;
 
-					if (this.speechBufferTimer) clearTimeout(this.speechBufferTimer);
-					this.speechBufferTimer = setTimeout(() => {
-						if (sessionToProcess && !sessionToProcess.processed) {
-							this.log(
-								"info",
-								`⏰ Processing complete request after short delay (Azure)`,
-								{
-									sessionId: sessionToProcess.id,
-									transcript: sessionToProcess.transcript,
-								}
-							);
-							this.processRequestSession(sessionToProcess, onWakeWordDetected);
-							this.resetWakeWordState();
-							this.speechBuffer = [];
-						}
-					}, TIMING_CONSTANTS.COMPLETE_REQUEST_DELAY);
+				// Use faster processing for seat info, describe, special requests, priority members, and task commands
+				const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand) 
+					? 100  // Very fast for simple lookup commands
+					: TIMING_CONSTANTS.COMPLETE_REQUEST_DELAY;
+
+				if (this.speechBufferTimer) clearTimeout(this.speechBufferTimer);
+				this.speechBufferTimer = setTimeout(() => {
+					if (sessionToProcess && !sessionToProcess.processed) {
+						this.log(
+							"info",
+							`⏰ Processing complete request after short delay (Azure)`,
+							{
+								sessionId: sessionToProcess.id,
+								transcript: sessionToProcess.transcript,
+							}
+						);
+						this.processRequestSession(sessionToProcess, onWakeWordDetected);
+						this.resetWakeWordState();
+						this.speechBuffer = [];
+					}
+				}, processingDelay);
 
 					this.clearContinuationTimeout();
 				} else {
@@ -4708,6 +4789,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						this.currentSession
 					) {
 						this.resetWakeWordState();
+						this.wakeWordConfirmationPlayed = false; // Allow beep on next wake word
 						if (this.useAzureSpeech && this.azureSpeechService) {
 							this.azureSpeechService.stopRecognition().catch(() => {});
 						}
@@ -4730,6 +4812,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			const timeSinceWakeWord = now - this.wakeWordDetectedTime;
 			if (timeSinceWakeWord > TIMING_CONSTANTS.WAKE_WORD_TIMEOUT) {
 				this.resetWakeWordState();
+				this.wakeWordConfirmationPlayed = false; // Allow beep on next wake word
 				return;
 			}
 
@@ -4916,6 +4999,10 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	private cleanTranscript(transcript: string): string {
 		let cleaned = transcript.trim();
 		
+		// 0. Remove repeated wake words at the beginning (e.g., "skymate skymate 53b" → "53b")
+		// This handles cases where Azure detects the wake word multiple times
+		cleaned = cleaned.replace(/^(?:skymate\s+)+/gi, '');
+		
 		// 1. Remove duplicate text (Azure sometimes duplicates entire transcript)
 		// Example: "15 C wants water 15 C wants water" → "15 C wants water"
 		const words = cleaned.split(' ');
@@ -4954,12 +5041,14 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 		// 4. Clean up extra spaces
 		cleaned = cleaned.replace(/\s+/g, ' ').trim();
 		
-		// 5. CRITICAL: Reorder "cancel" or "check" to the front if they appear anywhere
+		// 5. CRITICAL: Reorder "cancel", "check", or "describe" to the front if they appear anywhere
 		// Example: "chicken cancel 1A chicken" → "cancel 1A chicken"
 		// Example: "water check 52B water" → "check 52B water"
+		// Example: "meal describe chicken meal" → "describe chicken meal"
 		// IMPORTANT: Preserve seat numbers that appear before cancel/check!
 		const cancelIndex = cleaned.toLowerCase().indexOf('cancel');
 		const checkIndex = cleaned.toLowerCase().indexOf('check');
+		const describeIndex = cleaned.toLowerCase().indexOf('describe');
 		
 		if (cancelIndex > 0) { // Only if cancel is NOT already at the start
 			// Remove "cancel" from its current position and move to front
@@ -5038,6 +5127,18 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					after: cleaned
 				});
 			}
+		} else if (describeIndex > 0) { // Only if describe is NOT already at the start
+			// Remove "describe" from its current position and move to front
+			const beforeDescribe = cleaned.substring(0, describeIndex).trim();
+			const afterDescribe = cleaned.substring(describeIndex + 8).trim(); // 8 = length of "describe"
+			
+			// For describe commands, we want to keep everything after "describe"
+			// and remove garbled text before it (usually duplicate meal names)
+			cleaned = `describe ${afterDescribe}`;
+			this.log("debug", "Moved 'describe' to front", {
+				before: `${beforeDescribe} describe ${afterDescribe}`,
+				after: cleaned
+			});
 		}
 		
 		return cleaned;
@@ -5070,7 +5171,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			});
 		}
 
-	// PRIORITY CHECK: Detect cancel/task/check/describe commands BEFORE normal processing
+	// PRIORITY CHECK: Detect cancel/task/check/describe/seat/special-requests/priority-members commands BEFORE normal processing
 	// These commands should bypass the scoring pipeline
 	const cancelPattern = /^cancel\s+/i;
 	const taskPattern = /^task\s+(list|pending|completed)/i;
@@ -5078,6 +5179,15 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	const checkPattern = /^(?:check|complete)\s+/i;
 	// NEW: Meal description commands (e.g., "describe chicken", "tell me about beef")
 	const describePattern = /^(describe|tell me about|what's in|what is in|info about|information about)\s+/i;
+	// NEW: Seat information commands (e.g., "remind me of 52B", "tell me about seat 25A")
+	// Word "seat" is optional to support natural phrasing
+	const seatInfoPattern = /\b(remind|tell|show|display|what|who|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+seat)?\s+\d{1,2}[A-F]\b/i;
+	// NEW: Special requests list command (e.g., "remind me of special requests", "list special requests")
+	const specialRequestsPattern = /\b(remind|tell|show|display|list|what|give|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+the)?(?:\s+all)?(?:\s+special\s*requests?)\b/i;
+	// NEW: Priority members list command (e.g., "who is priority member", "list priority members")
+	const priorityMembersPattern = /\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+priority\s*members?)\b/i;
+	// Exclude task commands from being detected as seat info
+	const isTaskCommand = /\b(task|past|ask)\s+\d+/i.test(session.transcript);
 	
 	if (cancelPattern.test(session.transcript)) {
 		this.log("info", "🚫 Cancel command detected - bypassing scoring pipeline", {
@@ -5111,6 +5221,36 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	
 	if (describePattern.test(session.transcript)) {
 		this.log("info", "🍽️ Meal description command detected - bypassing scoring pipeline", {
+			transcript: session.transcript,
+		});
+		// Mark as processed and pass through to callback immediately
+		session.processed = true;
+		onTranscript(session.transcript);
+		return; // Early exit
+	}
+	
+	if (seatInfoPattern.test(session.transcript) && !isTaskCommand) {
+		this.log("info", "🪑 Seat information command detected - bypassing scoring pipeline", {
+			transcript: session.transcript,
+		});
+		// Mark as processed and pass through to callback immediately
+		session.processed = true;
+		onTranscript(session.transcript);
+		return; // Early exit
+	}
+	
+	if (specialRequestsPattern.test(session.transcript)) {
+		this.log("info", "📋 Special requests list command detected - bypassing scoring pipeline", {
+			transcript: session.transcript,
+		});
+		// Mark as processed and pass through to callback immediately
+		session.processed = true;
+		onTranscript(session.transcript);
+		return; // Early exit
+	}
+	
+	if (priorityMembersPattern.test(session.transcript)) {
+		this.log("info", "⭐ Priority members list command detected - bypassing scoring pipeline", {
 			transcript: session.transcript,
 		});
 		// Mark as processed and pass through to callback immediately

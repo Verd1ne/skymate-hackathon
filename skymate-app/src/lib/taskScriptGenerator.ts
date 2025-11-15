@@ -7,6 +7,7 @@
 
 import { config } from './config';
 import type { Task } from '../types';
+import { getPassengerInfo } from '../data/passengerData';
 
 interface TaskScriptOptions {
 	taskNumber?: number; // Specific task number to summarize
@@ -86,9 +87,14 @@ export async function generateTaskScript(
 			taskNumber = index + 1;
 		}
 		
+		// Look up passenger name from database
+		const passengerInfo = getPassengerInfo(task.seat);
+		const passengerName = passengerInfo?.passengerName || 'passenger';
+		
 		return {
 			number: taskNumber,
 			seat: task.seat,
+			passengerName: passengerName,
 			type: task.type,
 			item: task.item || 'unspecified item',
 			priority: task.priority,
@@ -107,22 +113,23 @@ ${JSON.stringify(taskData, null, 2)}
 
 Requirements:
 1. Be VERY concise and direct (for speech)
-2. If a task has multiple items (comma-separated in the "item" field), combine them naturally: "52a wanted chicken, beef, and water"
-3. Format for single seat with multiple items: "52a wanted chicken, beef, and water" (use "and" before last item)
-4. Format for multiple different seats: "52b wanted chicken, 53a wanted water, 58a wanted beef" (comma-separated list)
-5. Use simple past tense: "wanted", "needed", "requested"
-6. Seat format: lowercase letters (52a, not 52A)
-7. Item format: simple item names (chicken, beef, water - not "chicken meal")
-8. No formal language, no "Ladies and gentlemen", no "we have", no "they've requested"
-9. Just list: seat + wanted/needed/requested + items (with "and" for multiple items per seat)
-10. Keep it under 50 words total
+2. Include passenger names: "Seat 52a, John Smith wanted chicken" or just "John Smith wanted chicken"
+3. If a task has multiple items (comma-separated in the "item" field), combine them naturally: "John Smith wanted chicken, beef, and water"
+4. Format for single seat with multiple items: "Seat 52a, John Smith wanted chicken, beef, and water" (use "and" before last item)
+5. Format for multiple different seats: "Seat 52b, Mary wanted chicken. Seat 53a, Tom wanted water. Seat 58a, Jane wanted beef"
+6. Use simple past tense: "wanted", "needed", "requested"
+7. Seat format: Include seat number with lowercase letters (52a, not 52A)
+8. Item format: simple item names (chicken, beef, water - not "chicken meal")
+9. No formal language, no "Ladies and gentlemen", no "we have", no "they've requested"
+10. Format: "Seat [number], [Name] wanted [items]" (with "and" for multiple items per seat)
+11. Keep it under 50 words total
 
 Examples:
-- Single seat, multiple items: "52a wanted chicken, beef, and water"
-- Multiple seats: "52b wanted chicken, 53a wanted water, 58a wanted beef"
-- Single seat, single item: "52a wanted chicken"
+- Single seat, multiple items: "Seat 52a, John Smith wanted chicken, beef, and water"
+- Multiple seats: "Seat 52b, Mary wanted chicken. Seat 53a, Tom wanted water. Seat 58a, Jane wanted beef"
+- Single seat, single item: "Seat 52a, John Smith wanted chicken"
 
-Generate ONLY the spoken text, no markdown, no numbers, just the direct list:`;
+Generate ONLY the spoken text, no markdown, no task numbers, just the direct list:`;
 
 	try {
 		// Dynamic import to avoid bundle size issues
@@ -137,7 +144,7 @@ Generate ONLY the spoken text, no markdown, no numbers, just the direct list:`;
 			messages: [
 				{
 					role: 'system',
-					content: 'You are a helpful flight attendant assistant. Generate concise, direct summaries of tasks. For single seat with multiple items: "52a wanted chicken, beef, and water". For multiple seats: "52b wanted chicken, 53a wanted water". Always use "and" before the last item when a seat has multiple items. Be brief and direct.',
+					content: 'You are a helpful flight attendant assistant. Generate concise, direct summaries of tasks including passenger names. For single seat with multiple items: "Seat 52a, John Smith wanted chicken, beef, and water". For multiple seats: "Seat 52b, Mary wanted chicken. Seat 53a, Tom wanted water." Always use "and" before the last item when a seat has multiple items. Always include the passenger name. Be brief and direct.',
 				},
 				{
 					role: 'user',
@@ -163,7 +170,7 @@ Generate ONLY the spoken text, no markdown, no numbers, just the direct list:`;
 
 /**
  * Fallback script generator (if GPT fails)
- * Creates a simple natural language summary
+ * Creates a simple natural language summary with passenger names
  */
 function generateFallbackScript(tasks: Task[], taskNumber?: number): string {
 	if (tasks.length === 0) {
@@ -192,16 +199,25 @@ function generateFallbackScript(tasks: Task[], taskNumber?: number): string {
 		const seat = (task.seat || 'unknown').toLowerCase();
 		const formattedItems = formatItems(task.item || 'an item');
 		
-		return `${seat} wanted ${formattedItems}`;
+		// Look up passenger name
+		const passengerInfo = getPassengerInfo(task.seat);
+		const passengerName = passengerInfo?.passengerName || 'passenger';
+		
+		return `Seat ${seat}, ${passengerName} wanted ${formattedItems}`;
 	}
 
-	// Multiple tasks - format as simple comma-separated list
+	// Multiple tasks - format with passenger names
 	const taskList = tasks.map(t => {
 		const seat = (t.seat || 'unknown').toLowerCase();
 		const formattedItems = formatItems(t.item || 'an item');
-		return `${seat} wanted ${formattedItems}`;
+		
+		// Look up passenger name
+		const passengerInfo = getPassengerInfo(t.seat);
+		const passengerName = passengerInfo?.passengerName || 'passenger';
+		
+		return `Seat ${seat}, ${passengerName} wanted ${formattedItems}`;
 	});
 
-	return taskList.join(', ');
+	return taskList.join('. ');
 }
 

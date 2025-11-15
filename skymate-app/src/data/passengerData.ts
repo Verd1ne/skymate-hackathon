@@ -15,6 +15,8 @@ export interface PassengerInfo {
 	membershipTier?: "gold" | "diamond";
 	// Optional birthday for birthday card (ISO YYYY-MM-DD)
 	birthday?: string;
+	// Known allergies for the passenger; use ["none"] when no allergies
+	allergies?: string[];
 }
 
 // Mock passenger database for a Cathay Pacific flight
@@ -741,7 +743,12 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
  */
 export function getPassengerInfo(seatNumber: string): PassengerInfo | null {
 	const normalizedSeat = seatNumber.toUpperCase().trim();
-	return PASSENGER_DATABASE[normalizedSeat] || null;
+	const info = PASSENGER_DATABASE[normalizedSeat] || null;
+	if (!info) return null;
+	// Ensure allergies is always present to simplify UI rendering
+	const allergies =
+		info.allergies && info.allergies.length > 0 ? info.allergies : ["none"];
+	return { ...info, allergies };
 }
 
 /**

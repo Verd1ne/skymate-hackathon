@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Custom hook to detect earbud single-tap events via Media Session API.
@@ -21,14 +21,28 @@ export function useEarbudTapListener(
   onStart: () => void | Promise<void>,
   onStop: () => void
 ) {
+  // ANTI-STUTTER FIX: Use refs to store callbacks so we don't re-initialize on every change
+  // This prevents Media Session API cleanup/re-init cycle that interrupts audio
+  const isListeningRef = useRef(isListening);
+  const onStartRef = useRef(onStart);
+  const onStopRef = useRef(onStop);
+
+  // Update refs when props change (without triggering effect re-run)
   useEffect(() => {
-    // Check if Media Session API is supported
+    isListeningRef.current = isListening;
+    onStartRef.current = onStart;
+    onStopRef.current = onStop;
+  }, [isListening, onStart, onStop]);
+
+  // Initialize Media Session API ONCE (no dependencies except initial mount)
+  useEffect(() => {
+    // RELIABILITY CHECK: Verify Media Session API support early
     if (typeof navigator === "undefined" || !navigator.mediaSession) {
-      console.warn("⚠️ Media Session API not supported in this browser");
+      console.warn("⚠️ Media Session API not supported - earbud controls unavailable");
       return;
     }
 
-    console.log("🎧 Media Session API initialized for earbud controls");
+    console.log("🎧 Media Session API initialized for earbud controls (one-time setup)");
 
     // CRITICAL: Set metadata to activate Media Session
     // Without this, many browsers/OS won't route earbud controls to the web page
@@ -40,23 +54,26 @@ export function useEarbudTapListener(
         // Remove artwork to avoid placeholder errors
       });
       
-      // Set playback state to indicate we're ready for controls
-      navigator.mediaSession.playbackState = "paused";
+      // RELIABILITY FIX: Set playback state to 'playing' (not 'paused')
+      // 'playing' ensures media controls are always active and responsive
+      navigator.mediaSession.playbackState = "playing";
+      console.log("✅ Media Session playback state set to 'playing'");
     } catch (error) {
       console.warn("⚠️ Failed to set Media Session metadata:", error);
     }
 
-    // Handler toggles between start/stop based on current state
+    // Handler toggles between start/stop based on current state (uses refs)
     const handleAction = (details: any) => {
-      console.log("🎧 Earbud tap detected");
+      console.log("🎧 Earbud tap detected via Media Session API");
       
-      if (isListening) {
+      // Read from refs to get latest values without re-registering handlers
+      if (isListeningRef.current) {
         console.log("🎧 Stopping session");
-        onStop();
+        onStopRef.current();
       } else {
         console.log("🎧 Starting session");
         // Call onStart and handle if it returns a Promise
-        const result = onStart();
+        const result = onStartRef.current();
         if (result instanceof Promise) {
           result.catch((error) => {
             console.error("❌ Error in earbud tap handler:", error);
@@ -65,7 +82,8 @@ export function useEarbudTapListener(
       }
     };
 
-    // Register handlers for ALL possible media session actions
+    // RELIABILITY FIX: Register handlers for ALL possible media session actions
+    // Different earbuds/OS may use different action types
     const actions = [
       "play",
       "pause",
@@ -77,17 +95,20 @@ export function useEarbudTapListener(
       "stop",
     ];
     
+    let handlersRegistered = 0;
     actions.forEach((action) => {
       try {
         navigator.mediaSession.setActionHandler(action as any, handleAction);
+        handlersRegistered++;
       } catch (error) {
-        // Silently ignore unsupported actions
+        // Silently ignore unsupported actions (browser may not support all)
+        console.debug(`Action '${action}' not supported by this browser`);
       }
     });
 
-    console.log("✅ Earbud controls ready");
+    console.log(`✅ Earbud controls ready (${handlersRegistered}/${actions.length} actions registered)`);
 
-    // Cleanup function - remove handlers on unmount
+    // Cleanup function - remove handlers ONLY on unmount (not on every render)
     return () => {
       try {
         actions.forEach((action) => {
@@ -98,12 +119,16 @@ export function useEarbudTapListener(
           }
         });
         
-        // Clear metadata
+        // Clear metadata and reset playback state
         navigator.mediaSession.metadata = null;
+        navigator.mediaSession.playbackState = "none";
+        console.log("🎧 Media Session API cleaned up (component unmounted)");
       } catch (error) {
         // Ignore cleanup errors
       }
     };
-  }, [isListening, onStart, onStop]);
+  }, []); // CRITICAL: Empty deps array = initialize ONCE, cleanup on unmount only
 }
+
+
 

@@ -323,8 +323,10 @@ export class TTSService {
 				await this.audioContext.resume();
 				console.log("✅ AudioContext resumed, state:", this.audioContext.state);
 
-				// Wait a tiny bit to ensure context is fully resumed
-				await new Promise((resolve) => setTimeout(resolve, 50));
+				// ANTI-JITTER FIX #1: Wait for context to fully stabilize
+				// Some browsers need a moment after resume() to become fully ready
+				// This prevents audio glitches from starting playback too early
+				await new Promise((resolve) => setTimeout(resolve, 100));
 
 				// Double-check state after resume
 				if (
@@ -335,9 +337,10 @@ export class TTSService {
 						"⚠️ AudioContext not running after resume, state:",
 						this.audioContext.state
 					);
-					// Try one more time
+					// Try one more time with longer wait
 					try {
 						await this.audioContext.resume();
+						await new Promise((resolve) => setTimeout(resolve, 100));
 						console.log(
 							"✅ AudioContext resumed on retry, state:",
 							this.audioContext.state
@@ -718,13 +721,47 @@ export class TTSService {
 				audioBuffer = await this.audioContext.decodeAudioData(wavBuffer);
 			}
 
-			// Create source and play
+			// ANTI-JITTER FIX #2: Ensure audio context is fully stable before scheduling
+			// If context just resumed, wait a moment to prevent glitches
+			if (this.audioContext.state !== "running") {
+				console.warn("⚠️ AudioContext not running before playback, attempting to stabilize");
+				await this.audioContext.resume();
+				await new Promise(resolve => setTimeout(resolve, 50));
+			}
+
+			// ANTI-STUTTER FIX: Create gain node for smooth fade-in/fade-out
+			// This eliminates clicks and stutters at beginning and end of audio
+			const gainNode = this.audioContext.createGain();
 			const source = this.audioContext.createBufferSource();
 			source.buffer = audioBuffer;
-			source.connect(this.audioContext.destination);
-			source.start(0);
+			
+			// Connect source → gain → destination
+			source.connect(gainNode);
+			gainNode.connect(this.audioContext.destination);
 
-			console.log(`🔊 Audio playback started (${audioBuffer.sampleRate}Hz, ${audioBuffer.duration.toFixed(2)}s)`);
+			// ANTI-JITTER FIX #3: Schedule playback slightly in the future
+			// This gives the audio system time to prepare buffers and prevents underruns
+			// Using currentTime + small offset ensures smooth start
+			const now = this.audioContext.currentTime;
+			const startTime = now + 0.05; // Start 50ms in future for buffer preparation
+			const duration = audioBuffer.duration;
+			
+			// FADE-IN: Quick ramp from 0 to 1 over 10ms (starting at scheduled time)
+			// Eliminates click/pop at beginning
+			gainNode.gain.setValueAtTime(0, startTime);
+			gainNode.gain.linearRampToValueAtTime(1, startTime + 0.01);
+			
+			// FADE-OUT: Quick ramp from 1 to 0 over last 20ms
+			// Eliminates click/pop at end
+			const fadeOutStart = startTime + duration - 0.02;
+			const fadeOutEnd = startTime + duration;
+			gainNode.gain.setValueAtTime(1, fadeOutStart);
+			gainNode.gain.linearRampToValueAtTime(0, fadeOutEnd);
+
+			// Start playback at scheduled time (not immediately)
+			source.start(startTime);
+
+			console.log(`🔊 Audio playback scheduled with smooth fades (${audioBuffer.sampleRate}Hz, ${audioBuffer.duration.toFixed(2)}s, starting in 50ms)`);
 		} catch (error) {
 			console.error("❌ Error playing audio:", error);
 		}

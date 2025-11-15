@@ -21,9 +21,25 @@ export class TTSService {
 	private maxRetries = 2; // Maximum retry attempts for failed TTS
 	private retryDelay = 1000; // Delay between retries in ms
 	private synthesisTimeout = 30000; // 30 second timeout for synthesis
+	private onSpeakingStartCallback: (() => void) | null = null; // Callback when TTS starts
+	private onSpeakingStopCallback: (() => void) | null = null; // Callback when TTS stops
 
 	constructor() {
 		// Initialize will be called lazily when needed
+	}
+
+	/**
+	 * Set callback for when TTS starts speaking
+	 */
+	onSpeakingStart(callback: () => void): void {
+		this.onSpeakingStartCallback = callback;
+	}
+
+	/**
+	 * Set callback for when TTS stops speaking
+	 */
+	onSpeakingStop(callback: () => void): void {
+		this.onSpeakingStopCallback = callback;
 	}
 
 	/**
@@ -514,11 +530,14 @@ export class TTSService {
 			
 			// Set up timeout
 			timeoutId = setTimeout(() => {
-				if (!isResolved) {
-					isResolved = true;
-					this.isSpeaking = false;
-					const error = new Error(`TTS synthesis timeout after ${this.synthesisTimeout}ms`);
-					console.error("❌ TTS Timeout:", error);
+			if (!isResolved) {
+				isResolved = true;
+				this.isSpeaking = false;
+				if (this.onSpeakingStopCallback) {
+					this.onSpeakingStopCallback();
+				}
+				const error = new Error(`TTS synthesis timeout after ${this.synthesisTimeout}ms`);
+				console.error("❌ TTS Timeout:", error);
 					if (options?.onError) {
 						options.onError(error);
 					}
@@ -580,6 +599,9 @@ export class TTSService {
 				}
 
 				this.isSpeaking = true;
+				if (this.onSpeakingStartCallback) {
+					this.onSpeakingStartCallback();
+				}
 				console.log(
 					`🔊 Speaking: "${text.substring(0, 50)}${
 						text.length > 50 ? "..." : ""
@@ -587,6 +609,9 @@ export class TTSService {
 				);
 			} catch (error: any) {
 				this.isSpeaking = false;
+				if (this.onSpeakingStopCallback) {
+					this.onSpeakingStopCallback();
+				}
 				const err = error instanceof Error ? error : new Error(String(error));
 				if (options?.onError) {
 					options.onError(err);
@@ -609,17 +634,23 @@ export class TTSService {
 	): Promise<void> {
 		if (result.reason === this.sdk.ResultReason.SynthesizingAudioCompleted) {
 			// Play audio from result
-			await this.playAudioFromResult(result);
+		await this.playAudioFromResult(result);
 
-			this.isSpeaking = false;
-			console.log("✅ TTS completed successfully");
-			if (options?.onEnd) {
+		this.isSpeaking = false;
+		if (this.onSpeakingStopCallback) {
+			this.onSpeakingStopCallback();
+		}
+		console.log("✅ TTS completed successfully");
+		if (options?.onEnd) {
 				options.onEnd();
 			}
 			resolve();
-		} else if (result.reason === this.sdk.ResultReason.Canceled) {
-			const cancellation = this.sdk.CancellationDetails.fromResult(result);
-			this.isSpeaking = false;
+	} else if (result.reason === this.sdk.ResultReason.Canceled) {
+		const cancellation = this.sdk.CancellationDetails.fromResult(result);
+		this.isSpeaking = false;
+		if (this.onSpeakingStopCallback) {
+			this.onSpeakingStopCallback();
+		}
 			
 			// Enhanced error logging for WebSocket issues
 			const errorCode = cancellation.ErrorCode || 'Unknown';
@@ -648,11 +679,14 @@ export class TTSService {
 			if (options?.onError) {
 				options.onError(error);
 			}
-			reject(error);
-		} else {
-			this.isSpeaking = false;
-			const error = new Error(`TTS failed: ${result.reason}`);
-			console.error("❌ TTS Error:", error);
+		reject(error);
+	} else {
+		this.isSpeaking = false;
+		if (this.onSpeakingStopCallback) {
+			this.onSpeakingStopCallback();
+		}
+		const error = new Error(`TTS failed: ${result.reason}`);
+		console.error("❌ TTS Error:", error);
 			if (options?.onError) {
 				options.onError(error);
 			}
@@ -666,11 +700,14 @@ export class TTSService {
 	private handleSynthesisError(
 		error: any,
 		options: { onError?: (error: Error) => void } | undefined,
-		reject: (error: Error) => void
-	): void {
-		this.isSpeaking = false;
-		const err = error instanceof Error ? error : new Error(String(error));
-		console.error("❌ TTS Error:", err);
+	reject: (error: Error) => void
+): void {
+	this.isSpeaking = false;
+	if (this.onSpeakingStopCallback) {
+		this.onSpeakingStopCallback();
+	}
+	const err = error instanceof Error ? error : new Error(String(error));
+	console.error("❌ TTS Error:", err);
 		if (options?.onError) {
 			options.onError(err);
 		}
@@ -906,24 +943,36 @@ export class TTSService {
 			try {
 				// Check if stopSpeakingAsync method exists (Azure Speech SDK)
 				if (typeof this.synthesizer.stopSpeakingAsync === "function") {
-					this.synthesizer.stopSpeakingAsync(
-						() => {
-							this.isSpeaking = false;
-							console.log("🛑 TTS stopped");
-						},
-						(error: any) => {
-							console.warn("⚠️ Error stopping TTS:", error);
-							this.isSpeaking = false;
+				this.synthesizer.stopSpeakingAsync(
+					() => {
+						this.isSpeaking = false;
+						if (this.onSpeakingStopCallback) {
+							this.onSpeakingStopCallback();
 						}
-					);
-				} else {
-					// Fallback: just reset the flag
-					this.isSpeaking = false;
-					console.log("🛑 TTS stopped (no stopSpeakingAsync method)");
-				}
-			} catch (error: any) {
-				console.warn("⚠️ Error stopping TTS:", error);
+						console.log("🛑 TTS stopped");
+					},
+					(error: any) => {
+						console.warn("⚠️ Error stopping TTS:", error);
+						this.isSpeaking = false;
+						if (this.onSpeakingStopCallback) {
+							this.onSpeakingStopCallback();
+						}
+					}
+				);
+			} else {
+				// Fallback: just reset the flag
 				this.isSpeaking = false;
+				if (this.onSpeakingStopCallback) {
+					this.onSpeakingStopCallback();
+				}
+				console.log("🛑 TTS stopped (no stopSpeakingAsync method)");
+			}
+		} catch (error: any) {
+			console.warn("⚠️ Error stopping TTS:", error);
+			this.isSpeaking = false;
+			if (this.onSpeakingStopCallback) {
+				this.onSpeakingStopCallback();
+			}
 			}
 		}
 	}

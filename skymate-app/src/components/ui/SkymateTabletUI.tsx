@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import {
 	Crown,
 	ClipboardList,
+	Sparkles,
 	Headphones,
 	Mic,
 	Map as MapIcon,
@@ -770,7 +771,8 @@ function SkymateTabletUI() {
 		window.setTimeout(() => setSparkVisible(false), 1200);
 	};
 
-	const micActive = activeTab === "voice";
+	const isVoiceTab = activeTab === "voice";
+	const micIndicatorActive = isVoiceTab;
 
 	if (!hasStarted) {
 		return (
@@ -866,18 +868,18 @@ function SkymateTabletUI() {
 								<span
 									className={[
 										"inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px]",
-										micActive
+										micIndicatorActive
 											? "bg-red-50 border border-red-400 text-red-800 animate-pulse ring-1 ring-red-300"
 											: "bg-white border border-emerald-300 text-emerald-900",
 									].join(" ")}
 								>
-									{micActive && (
+									{micIndicatorActive && (
 										<span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
 									)}
 									<Headphones
 										className={[
 											"w-3.5 h-3.5",
-											micActive ? "text-red-700" : "",
+											micIndicatorActive ? "text-red-700" : "",
 										].join(" ")}
 									/>
 									Skymate ready

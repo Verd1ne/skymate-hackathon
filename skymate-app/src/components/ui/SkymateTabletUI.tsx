@@ -9,6 +9,7 @@ import {
 	Map as MapIcon,
 	CheckSquare,
 	Info,
+	Cake,
 } from "lucide-react";
 import {
 	getAllSeatNumbers,
@@ -22,6 +23,143 @@ import { useTasks } from "../../hooks/useTasks";
 import type { Task as BackendTask } from "../../types";
 
 type TabId = "gold" | "tasks" | "functions";
+
+type SeatTier = "regular" | "gold" | "diamond";
+
+function formatBirthday(iso?: string | null): string {
+	if (!iso) return "";
+	try {
+		const d = new Date(iso);
+		// Format as "Month day" (e.g. July 12)
+		return d.toLocaleString(undefined, { month: "long", day: "numeric" });
+	} catch {
+		return iso || "";
+	}
+}
+
+function BusinessSeatPod({
+	tier,
+	isSelected,
+}: {
+	tier: SeatTier;
+	isSelected?: boolean;
+}) {
+	const palette: Record<
+		SeatTier,
+		{
+			shell: string;
+			shellStroke: string;
+			seatBack: string;
+			seatBase: string;
+			console: string;
+			legroomStroke: string;
+		}
+	> = {
+		diamond: {
+			shell: "#020617",
+			shellStroke: "#0f172a",
+			seatBack: "#111827",
+			seatBase: "#1f2937",
+			console: "#020617",
+			legroomStroke: "#64748b",
+		},
+		gold: {
+			shell: "#78350f",
+			shellStroke: "#92400e",
+			seatBack: "#b45309",
+			seatBase: "#f59e0b",
+			console: "#fbbf24",
+			legroomStroke: "#f97316",
+		},
+		regular: {
+			shell: "#e5e7eb",
+			shellStroke: "#9ca3af",
+			seatBack: "#e5e7eb",
+			seatBase: "#d1d5db",
+			console: "#e5e7eb",
+			legroomStroke: "#94a3b8",
+		},
+	};
+
+	const { shell, shellStroke, seatBack, seatBase, console, legroomStroke } =
+		palette[tier];
+
+	const highlightStroke = isSelected ? "#059669" : shellStroke;
+	const highlightWidth = isSelected ? 3 : 2;
+
+	return (
+		<svg
+			viewBox="0 0 120 120"
+			className="w-full h-full"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<g transform="rotate(-18 60 60)">
+				{/* pod shell */}
+				<rect
+					x="25"
+					y="25"
+					rx="10"
+					ry="10"
+					width="70"
+					height="70"
+					fill={shell}
+					stroke={highlightStroke}
+					strokeWidth={highlightWidth}
+				/>
+				{/* seat back */}
+				<rect
+					x="38"
+					y="32"
+					rx="4"
+					ry="4"
+					width="24"
+					height="30"
+					fill={seatBack}
+					stroke={shellStroke}
+					strokeWidth="2"
+				/>
+				{/* seat base */}
+				<rect
+					x="38"
+					y="62"
+					rx="4"
+					ry="4"
+					width="40"
+					height="16"
+					fill={seatBase}
+					stroke={shellStroke}
+					strokeWidth="2"
+				/>
+				{/* side console */}
+				<rect
+					x="64"
+					y="32"
+					rx="3"
+					ry="3"
+					width="20"
+					height="22"
+					fill={console}
+					stroke={shellStroke}
+					strokeWidth="2"
+				/>
+				{/* legroom / pitch zone */}
+				<rect
+					x="38"
+					y="80"
+					width="46"
+					height="16"
+					rx="6"
+					ry="6"
+					fill="none"
+					stroke={legroomStroke}
+					strokeWidth="2"
+					strokeDasharray="4 4"
+				/>
+			</g>
+		</svg>
+	);
+}
 
 function GoldMembersSeatPage() {
 	const allSeats = useMemo(() => getAllSeatNumbers(), []);
@@ -91,17 +229,17 @@ function GoldMembersSeatPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-2 text-xs">
-						<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-sky-50 border border-sky-300 text-sky-900">
-							<span className="inline-block w-3 h-3 rounded-sm bg-gradient-to-br from-sky-400 to-cyan-400" />
+						<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-50 border border-slate-300 text-slate-900">
+							<span className="inline-block w-3 h-3 rounded-sm bg-gradient-to-br from-slate-800 to-slate-700" />
 							Diamond
 						</span>
-						<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-300 text-amber-900">
-							<span className="inline-block w-3 h-3 rounded-sm bg-gradient-to-br from-amber-300 to-amber-500" />
-							Gold member
+						<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-600 text-amber-900">
+							<span className="inline-block w-3 h-3 rounded-sm bg-gradient-to-br from-amber-700 to-amber-400" />
+							Gold
 						</span>
 						<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-50 border border-slate-300 text-slate-800">
 							<span className="inline-block w-3 h-3 rounded-sm bg-slate-400" />
-							Regular seat
+							Regular
 						</span>
 					</div>
 				</div>
@@ -109,15 +247,16 @@ function GoldMembersSeatPage() {
 				<div className="relative flex-1 overflow-hidden rounded-2xl bg-gradient-to-b from-slate-50 via-emerald-50 to-slate-100 p-4">
 					{/* Dual aisles: between A–B and C–D */}
 					<div className="pointer-events-none absolute inset-y-6 left-[28%] w-12 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
-					<div className="pointer-events-none absolute inset-y-6 left-[75%] w-12 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
+					<div className="pointer-events-none absolute inset-y-6 left-[76%] w-12 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
 
 					<div className="relative h-full flex">
-						{/* Column letters A B C D aligned to 6‑col grid (with aisles at 2 and 5) */}
+						{/* Column letters aligned to 6‑col grid (with aisles at 2 and 5).
+						   We label visually as A · D · G · K to mirror long‑haul business cabins. */}
 						<div className="pointer-events-none absolute left-10 right-6 top-0 grid grid-cols-[1fr_44px_1fr_1fr_44px_1fr] text-[11px] text-slate-500 font-medium px-6">
 							<span className="justify-self-start col-start-1">A</span>
-							<span className="justify-self-end col-start-3">B</span>
-							<span className="justify-self-start col-start-4">C</span>
-							<span className="justify-self-end col-start-6">D</span>
+							<span className="justify-self-end col-start-3">D</span>
+							<span className="justify-self-start col-start-4">G</span>
+							<span className="justify-self-end col-start-6">K</span>
 						</div>
 
 						{/* Row numbers */}
@@ -140,10 +279,11 @@ function GoldMembersSeatPage() {
 											const isDiamond = diamondSeatSet.has(seatId);
 											const isSelected = selectedSeat === seatId;
 
+											// Herringbone orientation: left pair angle one way, right pair the opposite.
 											const rotationByColumn = [
 												"rotate-[18deg]",
-												"-rotate-[18deg]",
 												"rotate-[18deg]",
+												"-rotate-[18deg]",
 												"-rotate-[18deg]",
 											] as const;
 
@@ -166,11 +306,18 @@ function GoldMembersSeatPage() {
 											const alignClass = alignByColumn[colIndex];
 											const colStartClass = colStartByColumn[colIndex];
 
+											const seatTier: SeatTier = isDiamond
+												? "diamond"
+												: isGold
+												? "gold"
+												: "regular";
+
 											return (
 												<button
 													key={seatId}
 													type="button"
 													onClick={() => handleSelectSeat(seatId)}
+													data-seat-id={seatId}
 													className={[
 														"relative flex flex-col items-center gap-1 text-[11px]",
 														colStartClass,
@@ -179,25 +326,17 @@ function GoldMembersSeatPage() {
 												>
 													<div
 														className={[
-															"relative w-14 h-9 transform transition-transform",
+															"relative w-16 h-16 transform transition-transform",
 															rotationClass,
 															isSelected
 																? "scale-110 drop-shadow-lg"
 																: "drop-shadow",
 														].join(" ")}
 													>
-														<div
-															className={[
-																"absolute inset-0 rounded-lg border",
-																isDiamond
-																	? "bg-gradient-to-br from-sky-400 via-cyan-300 to-emerald-300 border-sky-300"
-																	: isGold
-																	? "bg-gradient-to-br from-amber-300 via-amber-200 to-amber-300 border-amber-300"
-																	: "bg-gradient-to-br from-white to-slate-100 border-slate-300",
-															].join(" ")}
+														<BusinessSeatPod
+															tier={seatTier}
+															isSelected={isSelected}
 														/>
-														{/* Headrest / console */}
-														<div className="absolute -top-1 left-1 w-4 h-3 rounded-md bg-white/95 border border-slate-200" />
 													</div>
 													<span className="text-slate-700 font-medium">
 														{seatId}
@@ -220,7 +359,7 @@ function GoldMembersSeatPage() {
 						<Crown className="text-amber-300" size={22} />
 						<div>
 							<p className="text-xs uppercase tracking-[0.25em] text-emerald-500/90">
-								Priority Guest
+								Loyal Members
 							</p>
 						</div>
 					</div>
@@ -246,16 +385,10 @@ function GoldMembersSeatPage() {
 						</div>
 
 						<div className="flex flex-wrap gap-2">
-							{diamondSeatSet.has(selectedInfo.seatNumber) && (
-								<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-100 border border-sky-300 text-xs text-sky-900">
-									<Crown size={14} className="text-sky-600" />
-									Diamond member
-								</span>
-							)}
 							{!diamondSeatSet.has(selectedInfo.seatNumber) &&
 								goldSeatSet.has(selectedInfo.seatNumber) && (
-									<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 border border-amber-300 text-xs text-amber-900">
-										<Crown size={14} className="text-amber-500" />
+									<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-500 text-xs text-amber-900">
+										<Crown size={14} className="text-amber-600" />
 										Gold member
 									</span>
 								)}
@@ -280,6 +413,20 @@ function GoldMembersSeatPage() {
 								</span>
 							))}
 						</div>
+
+						{selectedInfo.birthday && (
+							<div className="mt-2 rounded-2xl border border-pink-200 bg-pink-50 p-4 flex items-start gap-3">
+								<Cake className="text-pink-600 flex-shrink-0 mt-1" size={18} />
+								<div className="space-y-1">
+									<p className="text-xs font-semibold text-pink-800 uppercase tracking-wide">
+										Birthday
+									</p>
+									<p className="text-sm text-pink-900">
+										{formatBirthday(selectedInfo.birthday)}
+									</p>
+								</div>
+							</div>
+						)}
 
 						<div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
 							<Info className="text-emerald-600 flex-shrink-0 mt-1" size={18} />
@@ -470,7 +617,7 @@ function TaskQueueInventoryPage() {
 			</div>
 
 			{/* Task queue panel as Kanban */}
-			<div className="bg-white border border-emerald-200 rounded-3xl p-5 shadow-lg shadow-emerald-100/60 flex flex-col">
+			<div className="bg-white border border-emerald-200 rounded-3xl py-5 px-4 shadow-lg shadow-emerald-100/60 flex flex-col">
 				<div className="flex items-center justify-between mb-4">
 					<div className="flex items-center gap-2">
 						<CheckSquare className="text-emerald-600" size={20} />
@@ -485,7 +632,7 @@ function TaskQueueInventoryPage() {
 					</span>
 				</div>
 
-				<div className="flex-1">
+				<div className="flex-1 -mx-3">
 					<div className="grid grid-cols-1 md:grid-cols-3 h-full md:divide-x md:divide-emerald-200/60">
 						{["cathay", "priority", "normal"].map((column) => {
 							// Only show active (non-completed) tasks in the columns.
@@ -497,14 +644,14 @@ function TaskQueueInventoryPage() {
 								)
 								.sort((a, b) => a.timestamp - b.timestamp);
 							const titleMap: Record<string, string> = {
-								cathay: "Priority Guest",
+								cathay: "Loyal Members",
 								priority: "Urgent",
 								normal: "Normal",
 							};
 							return (
 								<div key={column} className="flex flex-col px-3 min-h-[200px]">
 									<div className="flex items-center justify-between mb-2">
-										<p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">
+										<p className="text-[12px] font-semibold text-emerald-900 uppercase tracking-wide">
 											{titleMap[column]}
 										</p>
 										<span className="text-[11px] text-emerald-700/80">
@@ -513,12 +660,12 @@ function TaskQueueInventoryPage() {
 									</div>
 									<div className="flex-1 overflow-y-auto pr-1">
 										{tasksLoading && column === "cathay" && (
-											<p className="text-[11px] text-emerald-700/80">
+											<p className="text-[10px] text-emerald-700/80">
 												Loading tasks...
 											</p>
 										)}
 										{tasksError && column === "cathay" && (
-											<p className="text-[11px] text-red-600">
+											<p className="text-[10px] text-red-600">
 												Task error: {tasksError}
 											</p>
 										)}
@@ -555,9 +702,9 @@ function TaskQueueInventoryPage() {
 																className={[
 																	"w-full px-2 py-2 flex items-center gap-2.5 text-sm",
 																	isDiamondTask
-																		? "bg-indigo-100/95 border-l-4 border-indigo-500/90 shadow-md"
+																		? "bg-slate-50/95 border-l-4 border-slate-700/90 shadow-md"
 																		: isGoldTask
-																		? "bg-amber-100/95 border-l-4 border-amber-400/90 shadow-sm"
+																		? "bg-amber-50/95 border-l-4 border-amber-600/90 shadow-md"
 																		: "",
 																	isDone ? "opacity-60" : "opacity-100",
 																].join(" ")}
@@ -578,12 +725,12 @@ function TaskQueueInventoryPage() {
 																		className={[
 																			"flex items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-sm shrink-0 overflow-hidden leading-none text-center",
 																			isDiamondTask
-																				? "w-9 h-9 bg-gradient-to-br from-indigo-600 to-purple-500 text-sm"
-																				: "w-8 h-8",
+																				? "w-8 h-8 bg-gradient-to-br from-slate-800 to-slate-700 text-white text-xs"
+																				: "w-7 h-7",
 																			isDiamondTask
 																				? ""
 																				: isGoldTask
-																				? "bg-amber-500"
+																				? "bg-gradient-to-br from-amber-700 to-amber-500 text-white"
 																				: "bg-emerald-600",
 																		].join(" ")}
 																	>
@@ -592,7 +739,7 @@ function TaskQueueInventoryPage() {
 																	<div className="flex flex-col">
 																		<p
 																			className={[
-																				"text-sm font-semibold text-emerald-950",
+																				"text-xs font-semibold text-emerald-950",
 																				isDone
 																					? "line-through text-emerald-500"
 																					: "",
@@ -602,12 +749,6 @@ function TaskQueueInventoryPage() {
 																				task.item || task.request
 																			)}
 																		</p>
-																		{isDiamondTask && (
-																			<span className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-300 text-[10px] text-sky-900">
-																				<Crown className="w-3 h-3 text-sky-600" />
-																				Diamond priority guest
-																			</span>
-																		)}
 																	</div>
 																</div>
 															</div>
@@ -632,7 +773,11 @@ function TaskQueueInventoryPage() {
 	);
 }
 
-function AssistantFunctionsPage() {
+function AssistantFunctionsPage({
+	onMicActiveChange,
+}: {
+	onMicActiveChange?: (active: boolean) => void;
+}) {
 	const functions = [
 		{
 			id: 1,
@@ -726,12 +871,14 @@ function AssistantFunctionsPage() {
 			// Immediately stop tracks; we only wanted permission here
 			stream.getTracks().forEach((t) => t.stop());
 			setMicEnabled(true);
+			onMicActiveChange?.(true);
 		} catch (err: any) {
 			console.error("Microphone permission error:", err);
 			setMicError(
 				err?.message || "Unable to access microphone. Please check permissions."
 			);
 			setMicEnabled(false);
+			onMicActiveChange?.(false);
 		} finally {
 			setRequestingMic(false);
 		}
@@ -875,6 +1022,81 @@ function AssistantFunctionsPage() {
 
 function SkymateTabletUI() {
 	const [activeTab, setActiveTab] = useState<TabId>("gold");
+	const [micActive, setMicActive] = useState<boolean>(false);
+	const [flightNumber, setFlightNumber] = useState<string>("");
+	const [employeeId, setEmployeeId] = useState<string>("");
+	const [hasStarted, setHasStarted] = useState<boolean>(false);
+
+	if (!hasStarted) {
+		return (
+			<div className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-900 to-slate-900 text-emerald-50 flex items-center justify-center relative overflow-hidden">
+				<div className="pointer-events-none absolute inset-0">
+					<div className="absolute -top-40 -left-32 w-80 h-80 bg-emerald-500/25 blur-3xl rounded-full" />
+					<div className="absolute bottom-[-8rem] right-[-6rem] w-[22rem] h-[22rem] bg-emerald-300/20 blur-3xl rounded-full" />
+					<div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-slate-950/80 to-transparent" />
+				</div>
+
+				<motion.div
+					initial={{ opacity: 0, y: 40 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ duration: 0.8, ease: "easeOut" }}
+					className="relative z-10 w-full max-w-xl px-6"
+				>
+					<div className="mb-6 text-[11px] uppercase tracking-[0.35em] text-emerald-200/80">
+						Cathay · Skymate
+					</div>
+					<h1 className="text-4xl md:text-5xl font-semibold text-emerald-50 mb-3">
+						Ready for departure
+					</h1>
+					<p className="text-sm text-emerald-100/80 mb-8 max-w-md">
+						Enter your flight and crew ID to bring the Skymate galley assistant
+						online.
+					</p>
+
+					<div className="space-y-5">
+						<div>
+							<label className="text-[11px] uppercase tracking-[0.25em] text-emerald-200/90">
+								Flight number
+							</label>
+							<input
+								type="text"
+								value={flightNumber}
+								onChange={(e) => setFlightNumber(e.target.value)}
+								placeholder="e.g. CX 659"
+								className="mt-1 w-full rounded-2xl bg-white/5 border border-emerald-400/60 px-4 py-3 text-sm text-emerald-50 placeholder:text-emerald-200/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/80 focus:border-emerald-300/80 backdrop-blur-sm"
+							/>
+						</div>
+
+						<div>
+							<label className="text-[11px] uppercase tracking-[0.25em] text-emerald-200/90">
+								Employee ID
+							</label>
+							<input
+								type="text"
+								value={employeeId}
+								onChange={(e) => setEmployeeId(e.target.value)}
+								placeholder="Crew ID"
+								className="mt-1 w-full rounded-2xl bg-white/5 border border-emerald-400/60 px-4 py-3 text-sm text-emerald-50 placeholder:text-emerald-200/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/80 focus:border-emerald-300/80 backdrop-blur-sm"
+							/>
+						</div>
+
+						<button
+							type="button"
+							onClick={() => setHasStarted(true)}
+							className="mt-3 inline-flex items-center justify-center w-full rounded-2xl bg-emerald-400 text-emerald-950 font-semibold text-sm py-3.5 shadow-xl shadow-emerald-500/40 hover:bg-emerald-300 transition-transform transform hover:translate-y-[1px]"
+						>
+							Start Skymate
+						</button>
+
+						<p className="text-[11px] text-emerald-100/70">
+							This prototype accepts any flight and employee ID — values are not
+							validated.
+						</p>
+					</div>
+				</motion.div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-emerald-50 via-slate-50 to-emerald-100 text-emerald-950">
@@ -891,12 +1113,30 @@ function SkymateTabletUI() {
 							</h1>
 						</div>
 						<div className="flex flex-col items-end gap-1">
-							<span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-white border border-emerald-300 text-[11px] text-emerald-900">
-								<Headphones className="w-3.5 h-3.5" />
-								In‑ear assistant ready
+							<span
+								className={[
+									"inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px]",
+									micActive
+										? "bg-red-50 border border-red-400 text-red-800 animate-pulse ring-1 ring-red-300"
+										: "bg-white border border-emerald-300 text-emerald-900",
+								].join(" ")}
+							>
+								{micActive && (
+									<span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+								)}
+								<Headphones
+									className={[
+										"w-3.5 h-3.5",
+										micActive ? "text-red-700" : "",
+									].join(" ")}
+								/>
+								{micActive ? "Skymate ready" : "Skymate not connected"}
 							</span>
 							<p className="text-[10px] text-emerald-700/80">
-								CX 520 · HKG → SIN · Galley rear
+								{flightNumber
+									? `${flightNumber.toUpperCase()} · `
+									: "CX 659 · "}
+								HKG → SIN · Galley rear
 							</p>
 						</div>
 					</div>
@@ -906,7 +1146,9 @@ function SkymateTabletUI() {
 				<main className="flex-1 px-4 md:px-6 py-4 pb-24">
 					{activeTab === "gold" && <GoldMembersSeatPage />}
 					{activeTab === "tasks" && <TaskQueueInventoryPage />}
-					{activeTab === "functions" && <AssistantFunctionsPage />}
+					{activeTab === "functions" && (
+						<AssistantFunctionsPage onMicActiveChange={setMicActive} />
+					)}
 				</main>
 
 				{/* Bottom navigation */}
@@ -923,7 +1165,7 @@ function SkymateTabletUI() {
 							].join(" ")}
 						>
 							<Crown size={18} />
-							<span>Priority Guest</span>
+							<span>Loyal Members</span>
 						</button>
 						<button
 							type="button"

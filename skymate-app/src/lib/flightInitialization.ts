@@ -147,60 +147,60 @@ export async function initializeFlightTasks(): Promise<InitializationStats> {
  * Create a task for dietary restriction
  */
 async function createDietaryTask(
-  seat: string,
-  passengerName: string,
-  dietaryRestriction: string
+	seat: string,
+	passengerName: string,
+	dietaryRestriction: string
 ): Promise<void> {
-  if (!db) return;
+	if (!db) return;
 
-  const tasksRef = ref(db, "tasks");
-  
-  // Map dietary restriction to meal item
-  const mealItem = getDietaryMealItem(dietaryRestriction);
-  
-  const task = {
-    seat,
-    request: `${seat} ${passengerName} - ${dietaryRestriction} meal`,
-    type: "meal" as const,
-    item: mealItem,
-    priority: "high" as const, // Dietary restrictions are high priority
-    status: "pending" as const,
-    timestamp: Date.now(),
-    specialRequirements: [dietaryRestriction],
-    passenger_flags: ["dietary_restriction"],
-  };
+	const tasksRef = ref(db, "tasks");
 
-  await push(tasksRef, task);
-  console.log(`✅ Created dietary task: ${seat} - ${dietaryRestriction}`);
+	// Map dietary restriction to meal item
+	const mealItem = getDietaryMealItem(dietaryRestriction);
+
+	const task = {
+		seat,
+		request: `${seat} ${passengerName} - ${dietaryRestriction} meal`,
+		type: "meal" as const,
+		item: mealItem,
+		priority: "high" as const, // Dietary restrictions are high priority
+		status: "pending" as const,
+		timestamp: Date.now(),
+		specialRequirements: [dietaryRestriction],
+		passenger_flags: ["dietary_restriction"],
+	};
+
+	await push(tasksRef, task);
+	console.log(`✅ Created dietary task: ${seat} - ${dietaryRestriction}`);
 }
 
 /**
  * Create a task for special request
  */
 async function createSpecialRequestTask(
-  seat: string,
-  passengerName: string,
-  specialRequest: string
+	seat: string,
+	passengerName: string,
+	specialRequest: string
 ): Promise<void> {
-  if (!db) return;
+	if (!db) return;
 
-  const tasksRef = ref(db, "tasks");
-  
-  // Determine task type and priority based on request
-  const { type, priority } = categorizeRequest(specialRequest);
-  
-  const task = {
-    seat,
-    request: `${seat} ${passengerName} - ${specialRequest}`,
-    type,
-    item: specialRequest,
-    priority,
-    status: "pending" as const,
-    timestamp: Date.now(),
-  };
+	const tasksRef = ref(db, "tasks");
 
-  await push(tasksRef, task);
-  console.log(`✅ Created special request task: ${seat} - ${specialRequest}`);
+	// Determine task type and priority based on request
+	const { type, priority } = categorizeRequest(specialRequest);
+
+	const task = {
+		seat,
+		request: `${seat} ${passengerName} - ${specialRequest}`,
+		type,
+		item: specialRequest,
+		priority,
+		status: "pending" as const,
+		timestamp: Date.now(),
+	};
+
+	await push(tasksRef, task);
+	console.log(`✅ Created special request task: ${seat} - ${specialRequest}`);
 }
 
 /**
@@ -235,7 +235,7 @@ async function createPriorityMemberOrders(
 			request: `${seat} ${passenger.passengerName} - ${mealItem}`,
 			type: "meal" as const,
 			item: mealItem,
-			priority: (isDiamond ? "urgent" : "high") as const,
+			priority: isDiamond ? ("urgent" as const) : ("high" as const),
 			status: "pending" as const,
 			timestamp: Date.now(),
 			passenger_flags: ["priority_member"],
@@ -270,7 +270,7 @@ async function createPriorityMemberOrders(
 			request: `${seat} ${passenger.passengerName} - ${drinkItem}`,
 			type: "beverage" as const,
 			item: drinkItem,
-			priority: (isDiamond ? "high" : "normal") as const,
+			priority: isDiamond ? ("high" as const) : ("normal" as const),
 			status: "pending" as const,
 			timestamp: Date.now(),
 			passenger_flags: ["priority_member"],
@@ -288,84 +288,89 @@ async function createPriorityMemberOrders(
  * Map dietary restriction to meal item name
  */
 function getDietaryMealItem(dietaryRestriction: string): string {
-  const restriction = dietaryRestriction.toLowerCase();
-  
-  const mealMap: Record<string, string> = {
-    vegan: "vegan meal",
-    vegetarian: "vegetarian meal",
-    "gluten-free": "gluten-free meal",
-    "dairy-free": "dairy-free meal",
-    halal: "halal meal",
-    kosher: "kosher meal",
-  };
-  
-  return mealMap[restriction] || `${dietaryRestriction} meal`;
+	const restriction = dietaryRestriction.toLowerCase();
+
+	const mealMap: Record<string, string> = {
+		vegan: "vegan meal",
+		vegetarian: "vegetarian meal",
+		"gluten-free": "gluten-free meal",
+		"dairy-free": "dairy-free meal",
+		halal: "halal meal",
+		kosher: "kosher meal",
+	};
+
+	return mealMap[restriction] || `${dietaryRestriction} meal`;
 }
 
 /**
  * Categorize special request to determine task type and priority
  */
 function categorizeRequest(request: string): {
-  type: "meal" | "beverage" | "comfort" | "assistance" | "medical" | "information";
-  priority: "urgent" | "high" | "normal" | "low";
+	type:
+		| "meal"
+		| "beverage"
+		| "comfort"
+		| "assistance"
+		| "medical"
+		| "information";
+	priority: "urgent" | "high" | "normal" | "low";
 } {
-  const requestLower = request.toLowerCase();
-  
-  // Beverages
-  if (
-    requestLower.includes("water") ||
-    requestLower.includes("coffee") ||
-    requestLower.includes("tea") ||
-    requestLower.includes("juice") ||
-    requestLower.includes("wine") ||
-    requestLower.includes("beer")
-  ) {
-    return { type: "beverage", priority: "normal" };
-  }
-  
-  // Comfort items
-  if (
-    requestLower.includes("pillow") ||
-    requestLower.includes("blanket") ||
-    requestLower.includes("headphones") ||
-    requestLower.includes("headset") ||
-    requestLower.includes("magazine") ||
-    requestLower.includes("newspaper")
-  ) {
-    return { type: "comfort", priority: "low" };
-  }
-  
-  // Food items
-  if (
-    requestLower.includes("meal") ||
-    requestLower.includes("snack") ||
-    requestLower.includes("fruit")
-  ) {
-    return { type: "meal", priority: "normal" };
-  }
-  
-  // Default to assistance with normal priority
-  return { type: "assistance", priority: "normal" };
+	const requestLower = request.toLowerCase();
+
+	// Beverages
+	if (
+		requestLower.includes("water") ||
+		requestLower.includes("coffee") ||
+		requestLower.includes("tea") ||
+		requestLower.includes("juice") ||
+		requestLower.includes("wine") ||
+		requestLower.includes("beer")
+	) {
+		return { type: "beverage", priority: "normal" };
+	}
+
+	// Comfort items
+	if (
+		requestLower.includes("pillow") ||
+		requestLower.includes("blanket") ||
+		requestLower.includes("headphones") ||
+		requestLower.includes("headset") ||
+		requestLower.includes("magazine") ||
+		requestLower.includes("newspaper")
+	) {
+		return { type: "comfort", priority: "low" };
+	}
+
+	// Food items
+	if (
+		requestLower.includes("meal") ||
+		requestLower.includes("snack") ||
+		requestLower.includes("fruit")
+	) {
+		return { type: "meal", priority: "normal" };
+	}
+
+	// Default to assistance with normal priority
+	return { type: "assistance", priority: "normal" };
 }
 
 /**
  * Check if flight has been initialized
  */
 export async function isFlightInitialized(): Promise<boolean> {
-  if (!db) return false;
-  
-  try {
-    const tasksRef = ref(db, "tasks");
-    const snapshot = await get(tasksRef);
-    
-    if (!snapshot.exists()) return false;
-    
-    const tasks = Object.values(snapshot.val());
-    // Consider initialized if there are any pending tasks
-    return tasks.some((task: any) => task.status === "pending");
-  } catch (error) {
-    console.error("Error checking initialization status:", error);
-    return false;
-  }
-}
+	if (!db) return false;
 
+	try {
+		const tasksRef = ref(db, "tasks");
+		const snapshot = await get(tasksRef);
+
+		if (!snapshot.exists()) return false;
+
+		const tasks = Object.values(snapshot.val());
+		// Consider initialized if there are any pending tasks
+		return tasks.some((task: any) => task.status === "pending");
+	} catch (error) {
+		console.error("Error checking initialization status:", error);
+		return false;
+	}
+}

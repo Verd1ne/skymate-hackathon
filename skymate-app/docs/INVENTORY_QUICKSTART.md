@@ -114,23 +114,16 @@ Look for colored indicators:
 
 ---
 
-## 🔄 Two Ways to Track Inventory
+## 🔄 Inventory Tracking
 
-### Option 1: Scanner Tab (Camera-based)
+### Queue Tab (Database-based)
 
-- Uses OpenAI Vision API
-- Automatically detects items via camera
-- Instant classification and deduction
-- Best for: Quick scanning
-
-### Option 2: Queue Tab (Database-based)
-
-- Manual selection
-- Queue management workflow
+- Manual selection via voice commands or UI
+- Task-based workflow
 - Real-time Firebase sync
-- Best for: Precise tracking
+- Voice-powered for hands-free operation
 
-**Both tabs are available in the bottom navigation!**
+**Access via the bottom navigation!**
 
 ---
 

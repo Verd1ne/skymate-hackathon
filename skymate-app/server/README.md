@@ -1,6 +1,6 @@
-# Skymate Video Intelligence Server
+# SkyMate Backend Server
 
-Backend Express server untuk memproses video menggunakan Google Cloud Video Intelligence API.
+Express backend server for SkyMate voice-powered task management system.
 
 ## Setup
 
@@ -11,89 +11,27 @@ cd skymate-app/server
 npm install
 ```
 
-### 2. Configure Environment Variables
-
-Copy `env.example` ke `.env` dan isi dengan nilai yang sesuai:
-
-```bash
-cp env.example .env
-```
-
-Edit `.env`:
-```
-PORT=3001
-GOOGLE_CLOUD_PROJECT_ID=skymate-477913
-GCS_BUCKET_NAME=skymate-video-analysis
-GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
-```
-
-### 3. Setup Google Cloud Storage Bucket
-
-Jalankan script setup (memerlukan `gcloud` CLI):
-
-```bash
-chmod +x setup-gcs.sh
-./setup-gcs.sh
-```
-
-Atau buat bucket secara manual:
-```bash
-gsutil mb -p skymate-477913 -l us-central1 gs://skymate-video-analysis
-gsutil lifecycle set lifecycle.json gs://skymate-video-analysis
-```
-
-### 4. Start Development Server
+### 2. Start Development Server
 
 ```bash
 npm run dev
 ```
 
-Server akan berjalan di `http://localhost:3001`
+Server will run at `http://localhost:3001`
 
 ## API Endpoints
 
-### POST `/api/video/analyze`
-
-Upload dan analisis video untuk deteksi gerakan tangan.
-
-**Request:**
-- Method: `POST`
-- Content-Type: `multipart/form-data`
-- Body: 
-  - `video`: Video file (max 50MB)
-
-**Response:**
-```json
-{
-  "direction": "in" | "out" | "unknown",
-  "confidence": 0.92,
-  "detectedObjects": [
-    {
-      "entity": "Hand",
-      "confidence": 0.95,
-      "segment": {
-        "startTime": "0s",
-        "endTime": "5s"
-      },
-      "frames": [...]
-    }
-  ],
-  "handDetected": true,
-  "itemDetected": true,
-  "processingTime": 15234
-}
-```
-
-### GET `/health`
+### GET `/`
 
 Health check endpoint.
 
 **Response:**
 ```json
 {
-  "status": "ok",
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "service": "skymate-video-intelligence"
+  "name": "SkyMate Server",
+  "version": "1.0.0",
+  "status": "running",
+  "message": "SkyMate backend server for voice-powered task management"
 }
 ```
 
@@ -108,9 +46,6 @@ npm run build
 
 # Start production server
 npm start
-
-# Clean build directory
-npm run clean
 ```
 
 ## Architecture
@@ -119,39 +54,21 @@ npm run clean
 server/
 ├── src/
 │   ├── index.ts                    # Express server entry
-│   ├── routes/
-│   │   └── video.routes.ts         # Video API routes
-│   ├── services/
-│   │   ├── storage.service.ts      # Google Cloud Storage
-│   │   ├── videoIntelligence.service.ts  # Video Intelligence API
-│   │   └── motionAnalysis.service.ts     # Motion classification
-│   ├── middleware/
-│   │   └── upload.middleware.ts    # Multer file upload
-│   └── types/
-│       └── video.types.ts          # TypeScript interfaces
-├── uploads/                        # Temporary video storage
+│   ├── routes/                     # API routes
+│   ├── services/                   # Business logic services
+│   ├── middleware/                 # Express middleware
+│   ├── types/                      # TypeScript type definitions
+│   └── utils/                      # Utility functions
 └── dist/                           # Compiled JavaScript
 ```
 
-## Troubleshooting
+## Tech Stack
 
-### Error: "Bucket not found"
+- **Express.js**: Web framework
+- **TypeScript**: Type-safe JavaScript
+- **CORS**: Cross-origin resource sharing
+- **Nodemon**: Development auto-reload
 
-Pastikan bucket sudah dibuat:
-```bash
-gsutil ls -p skymate-477913
-```
+## Notes
 
-### Error: "Permission denied"
-
-Pastikan service account memiliki role:
-- Cloud Storage Admin
-- Video Intelligence API User
-
-### Error: "Video Intelligence API not enabled"
-
-Enable API:
-```bash
-gcloud services enable videointelligence.googleapis.com --project=skymate-477913
-```
-
+This backend server provides API endpoints for the SkyMate application. The main business logic for task management and voice processing happens on the frontend using Firebase Realtime Database.

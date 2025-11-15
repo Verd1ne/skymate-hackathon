@@ -1,6 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import videoRouter from './routes/video.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,18 +17,13 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Routes
-app.use('/api', videoRouter);
-
 // Root endpoint
 app.get('/', (req: Request, res: Response) => {
   res.json({
     name: 'SkyMate Server',
     version: '1.0.0',
     status: 'running',
-    endpoints: {
-      video: '/api/video',
-    },
+    message: 'SkyMate backend server for voice-powered task management',
   });
 });
 
@@ -50,8 +44,7 @@ async function startServer() {
     // Start Express server
     app.listen(PORT, () => {
       console.log('\n✅ Server is running!');
-      console.log(`   URL: http://localhost:${PORT}`);
-      console.log(`   Video API: http://localhost:${PORT}/api/video\n`);
+      console.log(`   URL: http://localhost:${PORT}\n`);
     });
   } catch (error: any) {
     console.error('❌ Failed to start server:', error.message);

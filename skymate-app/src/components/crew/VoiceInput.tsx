@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Mic, Loader2 } from "lucide-react";
 import { VoiceService } from "../../lib/voice";
 import {
@@ -105,6 +105,22 @@ function VoiceInput() {
     audio.loop = true;
     audio.volume = 0; // Silent
     silentAudioRef.current = audio;
+
+    // CRITICAL FIX: Try to play immediately (may fail due to autoplay policy, but worth trying)
+    // This ensures Media Session API is active as early as possible
+    audio
+      .play()
+      .then(() => {
+        console.log(
+          "✅ Silent audio started immediately - Media Session API active!"
+        );
+      })
+      .catch((error) => {
+        console.log(
+          "ℹ️ Silent audio autoplay blocked (expected) - waiting for user interaction:",
+          error.message
+        );
+      });
 
     // Resume AudioContext on first user interaction (required for browser autoplay policy)
     let hasResumed = false;
@@ -512,9 +528,10 @@ function VoiceInput() {
         return; // Early return for cancellation commands
       }
 
-      // Check for CHECK-OFF commands (e.g., "check 10A off" or "complete 52B")
+      // Check for CHECK-OFF commands (e.g., "check 10A off" or "complete 52B" or "checkoff 9F")
+      // CRITICAL FIX: Also match "checkoff" which is what voice service produces from "check X off"
       const checkPattern =
-        /^(?:check|complete)\s+(?:seat\s+)?([a-z]?\d+[a-z]?)(?:\s+(.+))?$/i;
+        /^(?:check|checkoff|complete)\s+(?:seat\s+)?([a-z]?\d+[a-z]?)(?:\s+(.+))?$/i;
       const checkMatch = normalizedForCancel.match(checkPattern);
 
       if (checkMatch) {
@@ -563,8 +580,9 @@ function VoiceInput() {
         }
 
         // Check if this is a request to check off entire order
+        // CRITICAL FIX: Also treat empty itemToCheck as "check all" (e.g., "checkoff 9F" with no item)
         const checkAllKeywords = /^(off|all|everything|order|task|done)$/i;
-        const isCheckAll = checkAllKeywords.test(itemToCheck);
+        const isCheckAll = !itemToCheck || checkAllKeywords.test(itemToCheck);
 
         console.log(`✅ Check-off request detected (normalized)`, {
           original: trimmedText,
@@ -813,7 +831,7 @@ function VoiceInput() {
         const seatNumberUpper = seatNumber!.toUpperCase().trim();
 
         // Import passenger data
-        const { getPassengerInfo, formatPassengerInfo } = await import(
+        const { getPassengerInfo, formatBasicPassengerInfo } = await import(
           "../../data/passengerData"
         );
 
@@ -824,10 +842,54 @@ function VoiceInput() {
             `✅ Found passenger information for seat: ${seatNumberUpper}`
           );
 
+          // Check if there are any pending tasks for this seat
+          const seatTasks = tasks.filter(
+            (task) =>
+              task.seat.toUpperCase() === seatNumberUpper &&
+              task.status === "pending"
+          );
+
+          console.log(
+            `📋 Found ${seatTasks.length} pending task(s) for seat ${seatNumberUpper}`
+          );
+
           // Play TTS with passenger information
           if (ttsServiceRef.current) {
             try {
-              const description = formatPassengerInfo(passengerInfo);
+              let description: string;
+
+              if (seatTasks.length > 0) {
+                // If there are pending tasks, mention what they actually requested
+                const taskDescriptions = seatTasks
+                  .map((task, index) => {
+                    if (seatTasks.length === 1) {
+                      return `requested ${task.item || task.request}`;
+                    } else if (index === 0) {
+                      return `requested ${task.item || task.request}`;
+                    } else if (index === seatTasks.length - 1) {
+                      return `and ${task.item || task.request}`;
+                    } else {
+                      return `${task.item || task.request}`;
+                    }
+                  })
+                  .join(", ");
+
+                description = `Seat ${seatNumberUpper}, ${passengerInfo.passengerName} ${taskDescriptions}.`;
+
+                // Add dietary restrictions if relevant
+                if (
+                  passengerInfo.dietaryRestrictions &&
+                  passengerInfo.dietaryRestrictions.length > 0
+                ) {
+                  const restrictions =
+                    passengerInfo.dietaryRestrictions.join(" and ");
+                  description += ` They have ${restrictions} dietary restrictions.`;
+                }
+              } else {
+                // If no pending tasks, provide basic passenger info without meal preference
+                description = formatBasicPassengerInfo(passengerInfo);
+              }
+
               console.log(`🔊 Speaking passenger information: ${description}`);
 
               await ttsServiceRef.current.speak(description, {
@@ -1754,7 +1816,8 @@ function VoiceInput() {
 
   // Earbud tap handler - SIMPLIFIED to use virtual wake-word system
   // This leverages the proven Azure Speech wake-word detection for 100% reliability
-  const handleEarbudTap = async () => {
+  // CRITICAL FIX: Use useCallback to create stable reference that's available from first render
+  const handleEarbudTap = useCallback(async () => {
     console.log("🎧 Earbud tap detected - activating virtual wake word");
 
     if (!voiceServiceRef.current) {
@@ -1776,18 +1839,18 @@ function VoiceInput() {
     } catch (error) {
       console.error("❌ Error in handleEarbudTap:", error);
     }
-  };
+  }, []); // Empty deps - voice service ref is stable
 
-  // Store the handler in a ref to prevent re-registration
+  // Store the handler in a ref for keyboard shortcut access
   handleEarbudTapRef.current = handleEarbudTap;
 
   // Register earbud tap listener as an alternative activation method
   // Works alongside the existing wake-word detection system
   // Earbud tap activates listening without requiring "Skymate" wake word
-  // Use a stable callback that reads from the ref
+  // CRITICAL FIX: Pass handleEarbudTap directly (not through ref) to ensure it's available immediately
   useEarbudTapListener(
     isListening,
-    () => handleEarbudTapRef.current?.(),
+    handleEarbudTap, // Direct reference - always available from first render
     stopListening
   );
 

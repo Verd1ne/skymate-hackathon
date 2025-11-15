@@ -13,6 +13,10 @@ export interface PassengerInfo {
 	priorityMember?: boolean;
 	// Optional membership tier for highlighting in seat maps (e.g. Cathay Gold/Diamond)
 	membershipTier?: "gold" | "diamond";
+	// Optional birthday for birthday card (ISO YYYY-MM-DD)
+	birthday?: string;
+	// Known allergies for the passenger; use ["none"] when no allergies
+	allergies?: string[];
 }
 
 // Mock passenger database for a Cathay Pacific flight
@@ -22,34 +26,41 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "1A",
 		passengerName: "James Chen",
 		mealPreference: "beef",
+		membershipTier: "gold",
+		birthday: "1988-07-12",
 	},
 	"1B": {
 		seatNumber: "1B",
 		passengerName: "Sarah Wong",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		birthday: "1992-11-03",
 	},
 	"1C": {
 		seatNumber: "1C",
 		passengerName: "Priya Nair",
 		mealPreference: "chicken",
 		membershipTier: "diamond",
+		birthday: "1990-04-21",
 	},
 	"1D": {
 		seatNumber: "1D",
 		passengerName: "Kenji Sato",
 		mealPreference: "fish",
 		membershipTier: "gold",
+		birthday: "1985-09-30",
 	},
 	"2A": {
 		seatNumber: "2A",
 		passengerName: "Michael Liu",
 		mealPreference: "chicken",
+		membershipTier: "diamond",
 	},
 	"2B": {
 		seatNumber: "2B",
 		passengerName: "Emily Zhang",
 		mealPreference: "fish",
+		membershipTier: "diamond",
 	},
 	"2C": {
 		seatNumber: "2C",
@@ -67,6 +78,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "3A",
 		passengerName: "David Kim",
 		mealPreference: "beef",
+		membershipTier: "gold",
 	},
 	"3B": {
 		seatNumber: "3B",
@@ -95,12 +107,12 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		passengerName: "Jennifer Ng",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		membershipTier: "gold",
 	},
 	"4C": {
 		seatNumber: "4C",
 		passengerName: "Daniel Evans",
 		mealPreference: "beef",
-		membershipTier: "diamond",
 	},
 	"4D": {
 		seatNumber: "4D",
@@ -112,6 +124,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "5A",
 		passengerName: "Andrew Chan",
 		mealPreference: "beef",
+		membershipTier: "diamond",
 	},
 	"5B": {
 		seatNumber: "5B",
@@ -136,24 +149,28 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "6A",
 		passengerName: "Rachel Green",
 		mealPreference: "chicken",
+		birthday: "1987-02-14",
 	},
 	"6B": {
 		seatNumber: "6B",
 		passengerName: "Monica Geller",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		membershipTier: "gold",
+		birthday: "1991-12-09",
 	},
 	"6C": {
 		seatNumber: "6C",
 		passengerName: "Liam O'Connor",
 		mealPreference: "fish",
+		birthday: "1989-06-05",
 	},
 	"6D": {
 		seatNumber: "6D",
 		passengerName: "Aisha Khan",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
-		membershipTier: "gold",
+		birthday: "1993-08-17",
 	},
 	"7A": {
 		seatNumber: "7A",
@@ -726,7 +743,12 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
  */
 export function getPassengerInfo(seatNumber: string): PassengerInfo | null {
 	const normalizedSeat = seatNumber.toUpperCase().trim();
-	return PASSENGER_DATABASE[normalizedSeat] || null;
+	const info = PASSENGER_DATABASE[normalizedSeat] || null;
+	if (!info) return null;
+	// Ensure allergies is always present to simplify UI rendering
+	const allergies =
+		info.allergies && info.allergies.length > 0 ? info.allergies : ["none"];
+	return { ...info, allergies };
 }
 
 /**

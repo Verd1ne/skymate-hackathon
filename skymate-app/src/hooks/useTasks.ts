@@ -268,8 +268,12 @@ export function useTasks() {
 				
 				// Add completed items to passenger's past food history
 				if (task.seat && task.item) {
+					console.log(`🍽️ Processing past food for task:`, { seat: task.seat, item: task.item });
+					
 					const normalizedSeat = task.seat.replace(/\s+/g, "").toUpperCase();
 					const items = task.item.split(",").map((i: string) => i.trim()).filter(Boolean);
+					
+					console.log(`📍 Normalized seat: ${normalizedSeat}, Items: ${items.join(", ")}`);
 					
 					// Get current past food for this seat
 					const pastFoodRef = ref(db, `passengerPastFood/${normalizedSeat}`);
@@ -278,15 +282,22 @@ export function useTasks() {
 					let currentPastFood: string[] = [];
 					if (pastFoodSnapshot.exists()) {
 						currentPastFood = pastFoodSnapshot.val() || [];
+						console.log(`📦 Existing past food for ${normalizedSeat}:`, currentPastFood);
+					} else {
+						console.log(`📦 No existing past food for ${normalizedSeat}`);
 					}
 					
 					// Add new items (avoiding duplicates)
 					const updatedPastFood = [...new Set([...currentPastFood, ...items])];
 					
+					console.log(`💾 Saving past food for ${normalizedSeat}:`, updatedPastFood);
+					
 					// Save back to Firebase using set() for arrays
 					await set(pastFoodRef, updatedPastFood);
 					
-					console.log(`✅ Added ${items.join(", ")} to past food for seat ${normalizedSeat}`);
+					console.log(`✅ Successfully added ${items.join(", ")} to past food for seat ${normalizedSeat}`);
+				} else {
+					console.log(`⚠️ Missing seat or item data:`, { seat: task.seat, item: task.item });
 				}
 			}
 			

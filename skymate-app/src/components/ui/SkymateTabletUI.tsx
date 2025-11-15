@@ -24,6 +24,7 @@ import type { Task as BackendTask } from "../../types";
 import SeatIcon from "../../assets/seat.svg?react";
 import { useToast } from "../shared/ToastContainer";
 import { db, ref, onValue } from "../../lib/firebase";
+// import { PastFoodDebug } from "./PastFoodDebug"; // Debug component - uncomment to use
 
 type TabId = "gold" | "tasks" | "functions";
 
@@ -35,19 +36,29 @@ function GoldMembersSeatPage() {
 
 	// Fetch past food data from Firebase
 	useEffect(() => {
-		if (!db) return;
+		if (!db) {
+			console.error("❌ Firebase DB not initialized in SkymateTabletUI");
+			return;
+		}
 
+		console.log("🔥 Setting up Firebase listener for passengerPastFood");
 		const pastFoodRef = ref(db, "passengerPastFood");
-		const unsubscribe = onValue(pastFoodRef, (snapshot) => {
-			const data = snapshot.val();
-			if (data) {
-				console.log("📊 Past food data from Firebase:", data);
-				setPastFoodData(data);
-			} else {
-				console.log("📊 No past food data in Firebase yet");
-				setPastFoodData({});
+		const unsubscribe = onValue(
+			pastFoodRef,
+			(snapshot) => {
+				const data = snapshot.val();
+				if (data) {
+					console.log("📊 Past food data from Firebase:", data);
+					setPastFoodData(data);
+				} else {
+					console.log("📊 No past food data in Firebase yet");
+					setPastFoodData({});
+				}
+			},
+			(error) => {
+				console.error("❌ Firebase listener error:", error);
 			}
-		});
+		);
 
 		return () => unsubscribe();
 	}, []);
@@ -348,6 +359,28 @@ function GoldMembersSeatPage() {
 							)}
 						</div>
 
+						{/* Past Food History Section */}
+						{selectedInfo.pastFood && selectedInfo.pastFood.length > 0 && (
+							<div className="mt-3 rounded-2xl border border-purple-200 bg-purple-50 p-4">
+								<p className="text-xs font-semibold text-purple-900 uppercase tracking-wide mb-2">
+									Previous Orders
+								</p>
+								<div className="flex flex-wrap gap-1.5">
+									{selectedInfo.pastFood.map((food, idx) => (
+										<span
+											key={idx}
+											className="inline-flex items-center px-2 py-1 rounded-md bg-white border border-purple-200 text-xs text-purple-900"
+										>
+											{food}
+										</span>
+									))}
+								</div>
+								<p className="text-[11px] text-purple-900/70 mt-2 italic">
+									History helps personalize service and anticipate preferences
+								</p>
+							</div>
+						)}
+
 						<div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
 							<Info className="text-emerald-600 flex-shrink-0 mt-1" size={18} />
 							<div className="space-y-1">
@@ -357,7 +390,7 @@ function GoldMembersSeatPage() {
 								<p className="text-xs text-emerald-900/80">
 									Gold members are surfaced first when you say{" "}
 									<span className="font-semibold text-emerald-50">
-										“skymate, tell me special tasks”
+										"skymate, tell me special tasks"
 									</span>{" "}
 									or when their orders are delayed. This card keeps their key
 									details at your fingertips during service.
@@ -1200,6 +1233,9 @@ function SkymateTabletUI() {
 					</div>
 				</nav>
 			</motion.div>
+			
+			{/* Debug component - remove in production */}
+			{/* <PastFoodDebug /> */}
 		</div>
 	);
 }

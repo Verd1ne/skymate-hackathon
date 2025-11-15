@@ -26,6 +26,8 @@ export function useEarbudTapListener(
   const isListeningRef = useRef(isListening);
   const onStartRef = useRef(onStart);
   const onStopRef = useRef(onStop);
+  const isInitializedRef = useRef(false);
+  const initializationAttemptedRef = useRef(false);
 
   // Update refs when props change (without triggering effect re-run)
   useEffect(() => {
@@ -65,6 +67,21 @@ export function useEarbudTapListener(
     // Handler toggles between start/stop based on current state (uses refs)
     const handleAction = (details: any) => {
       console.log("🎧 Earbud tap detected via Media Session API");
+      
+      // CRITICAL FIX: Guard against uninitialized callbacks
+      if (!onStartRef.current || !onStopRef.current) {
+        console.warn("⚠️ Earbud tap ignored - callbacks not initialized yet");
+        // Retry after a short delay to handle race conditions
+        setTimeout(() => {
+          if (onStartRef.current && onStopRef.current) {
+            console.log("🎧 Retrying earbud tap after initialization...");
+            handleAction(details);
+          } else {
+            console.error("❌ Earbud tap failed - callbacks still not available");
+          }
+        }, 100);
+        return;
+      }
       
       // Read from refs to get latest values without re-registering handlers
       if (isListeningRef.current) {
@@ -108,8 +125,17 @@ export function useEarbudTapListener(
 
     console.log(`✅ Earbud controls ready (${handlersRegistered}/${actions.length} actions registered)`);
 
+    // Mark as initialized after a short delay to ensure everything is ready
+    // This prevents race conditions where tap happens before handlers are fully registered
+    setTimeout(() => {
+      isInitializedRef.current = true;
+      initializationAttemptedRef.current = true;
+      console.log("✅ Media Session API fully initialized and ready for taps");
+    }, 150);
+
     // Cleanup function - remove handlers ONLY on unmount (not on every render)
     return () => {
+      isInitializedRef.current = false;
       try {
         actions.forEach((action) => {
           try {

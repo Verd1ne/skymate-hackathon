@@ -16,188 +16,140 @@ export const MEAL_INGREDIENTS: Record<string, MealIngredients> = {
   // Chicken meals
   "chicken meal": {
     name: "Grilled Chicken Breast",
-    description: "Tender grilled chicken breast with herbs, served with roasted vegetables and rice pilaf",
+    description: "Chicken with butter and vegetables",
     ingredients: [
-      "Grilled chicken breast (6 oz)",
-      "Basmati rice pilaf with herbs",
-      "Roasted seasonal vegetables (carrots, zucchini, bell peppers)",
-      "Lemon herb butter sauce",
-      "Fresh rosemary and thyme",
-      "Olive oil",
-      "Sea salt and black pepper"
+      "Chicken",
+      "Butter",
+      "Vegetables"
     ],
     allergens: ["Dairy (butter)"],
     calories: 520,
-    dietaryInfo: ["High protein", "Gluten-free"]
+    dietaryInfo: ["High protein"]
   },
   
   "chicken": {
     name: "Grilled Chicken Breast",
-    description: "Tender grilled chicken breast with herbs, served with roasted vegetables and rice pilaf",
+    description: "Chicken with butter and vegetables",
     ingredients: [
-      "Grilled chicken breast (6 oz)",
-      "Basmati rice pilaf with herbs",
-      "Roasted seasonal vegetables (carrots, zucchini, bell peppers)",
-      "Lemon herb butter sauce",
-      "Fresh rosemary and thyme",
-      "Olive oil",
-      "Sea salt and black pepper"
+      "Chicken",
+      "Butter",
+      "Vegetables"
     ],
     allergens: ["Dairy (butter)"],
     calories: 520,
-    dietaryInfo: ["High protein", "Gluten-free"]
+    dietaryInfo: ["High protein"]
   },
 
   // Beef meals
   "beef meal": {
     name: "Braised Beef Tenderloin",
-    description: "Premium beef tenderloin braised in red wine sauce, served with garlic mashed potatoes and green beans",
+    description: "Beef with butter, onions, and nuts",
     ingredients: [
-      "Beef tenderloin (7 oz)",
-      "Red wine reduction sauce with shallots",
-      "Garlic mashed potatoes with butter and cream",
-      "Fresh green beans with almonds",
-      "Caramelized onions",
-      "Fresh thyme and bay leaves",
-      "Extra virgin olive oil",
-      "Sea salt and cracked black pepper"
+      "Beef",
+      "Butter",
+      "Onions",
+      "Almonds"
     ],
-    allergens: ["Dairy (butter, cream)", "Tree nuts (almonds)", "Sulfites (wine)"],
+    allergens: ["Dairy (butter)", "Tree nuts (almonds)"],
     calories: 680,
-    dietaryInfo: ["High protein", "Contains alcohol (wine sauce)"]
+    dietaryInfo: ["High protein"]
   },
 
   "beef": {
     name: "Braised Beef Tenderloin",
-    description: "Premium beef tenderloin braised in red wine sauce, served with garlic mashed potatoes and green beans",
+    description: "Beef with butter, onions, and nuts",
     ingredients: [
-      "Beef tenderloin (7 oz)",
-      "Red wine reduction sauce with shallots",
-      "Garlic mashed potatoes with butter and cream",
-      "Fresh green beans with almonds",
-      "Caramelized onions",
-      "Fresh thyme and bay leaves",
-      "Extra virgin olive oil",
-      "Sea salt and cracked black pepper"
+      "Beef",
+      "Butter",
+      "Onions",
+      "Almonds"
     ],
-    allergens: ["Dairy (butter, cream)", "Tree nuts (almonds)", "Sulfites (wine)"],
+    allergens: ["Dairy (butter)", "Tree nuts (almonds)"],
     calories: 680,
-    dietaryInfo: ["High protein", "Contains alcohol (wine sauce)"]
+    dietaryInfo: ["High protein"]
   },
 
   // Fish meals
   "fish meal": {
     name: "Pan-Seared Salmon",
-    description: "Atlantic salmon fillet with lemon dill sauce, served with quinoa and asparagus",
+    description: "Salmon with butter",
     ingredients: [
-      "Atlantic salmon fillet (6 oz)",
-      "Lemon dill cream sauce",
-      "Tri-color quinoa",
-      "Grilled asparagus with lemon zest",
-      "Fresh dill and parsley",
-      "White wine",
-      "Butter and cream",
-      "Sea salt and white pepper"
+      "Salmon",
+      "Butter"
     ],
-    allergens: ["Fish (salmon)", "Dairy (butter, cream)", "Sulfites (wine)"],
+    allergens: ["Fish (salmon)", "Dairy (butter)"],
     calories: 590,
-    dietaryInfo: ["High in Omega-3", "High protein", "Gluten-free"]
+    dietaryInfo: ["High protein"]
   },
 
   "fish": {
     name: "Pan-Seared Salmon",
-    description: "Atlantic salmon fillet with lemon dill sauce, served with quinoa and asparagus",
+    description: "Salmon with butter",
     ingredients: [
-      "Atlantic salmon fillet (6 oz)",
-      "Lemon dill cream sauce",
-      "Tri-color quinoa",
-      "Grilled asparagus with lemon zest",
-      "Fresh dill and parsley",
-      "White wine",
-      "Butter and cream",
-      "Sea salt and white pepper"
+      "Salmon",
+      "Butter"
     ],
-    allergens: ["Fish (salmon)", "Dairy (butter, cream)", "Sulfites (wine)"],
+    allergens: ["Fish (salmon)", "Dairy (butter)"],
     calories: 590,
-    dietaryInfo: ["High in Omega-3", "High protein", "Gluten-free"]
+    dietaryInfo: ["High protein"]
   },
 
   // Vegetarian meals
   "vegetarian meal": {
     name: "Mediterranean Vegetable Lasagna",
-    description: "Layered pasta with roasted vegetables, ricotta, and marinara sauce",
+    description: "Pasta with cheese and vegetables",
     ingredients: [
-      "Fresh lasagna sheets",
-      "Ricotta cheese",
-      "Mozzarella cheese",
-      "Parmesan cheese",
-      "Roasted eggplant and zucchini",
-      "Spinach and sun-dried tomatoes",
-      "House-made marinara sauce",
-      "Fresh basil and oregano",
-      "Extra virgin olive oil"
+      "Pasta",
+      "Cheese",
+      "Vegetables",
+      "Eggs"
     ],
-    allergens: ["Dairy (cheese)", "Gluten (pasta)", "Eggs (pasta)"],
+    allergens: ["Dairy (cheese)", "Gluten (pasta)", "Eggs"],
     calories: 540,
-    dietaryInfo: ["Vegetarian", "High in calcium"]
+    dietaryInfo: ["Vegetarian"]
   },
 
   "vegetarian": {
     name: "Mediterranean Vegetable Lasagna",
-    description: "Layered pasta with roasted vegetables, ricotta, and marinara sauce",
+    description: "Pasta with cheese and vegetables",
     ingredients: [
-      "Fresh lasagna sheets",
-      "Ricotta cheese",
-      "Mozzarella cheese",
-      "Parmesan cheese",
-      "Roasted eggplant and zucchini",
-      "Spinach and sun-dried tomatoes",
-      "House-made marinara sauce",
-      "Fresh basil and oregano",
-      "Extra virgin olive oil"
+      "Pasta",
+      "Cheese",
+      "Vegetables",
+      "Eggs"
     ],
-    allergens: ["Dairy (cheese)", "Gluten (pasta)", "Eggs (pasta)"],
+    allergens: ["Dairy (cheese)", "Gluten (pasta)", "Eggs"],
     calories: 540,
-    dietaryInfo: ["Vegetarian", "High in calcium"]
+    dietaryInfo: ["Vegetarian"]
   },
 
   // Vegan meals
   "vegan meal": {
     name: "Thai Vegetable Curry",
-    description: "Aromatic coconut curry with mixed vegetables and jasmine rice",
+    description: "Tofu with coconut and vegetables",
     ingredients: [
-      "Coconut milk",
-      "Red curry paste",
-      "Mixed vegetables (bell peppers, broccoli, bamboo shoots, carrots)",
-      "Tofu cubes",
-      "Jasmine rice",
-      "Thai basil",
-      "Lime juice",
-      "Ginger and garlic",
+      "Tofu",
+      "Coconut",
+      "Vegetables",
       "Soy sauce"
     ],
     allergens: ["Soy (tofu, soy sauce)", "Tree nuts (coconut)"],
     calories: 480,
-    dietaryInfo: ["Vegan", "Dairy-free", "Gluten-free (with tamari)"]
+    dietaryInfo: ["Vegan"]
   },
 
   "vegan": {
     name: "Thai Vegetable Curry",
-    description: "Aromatic coconut curry with mixed vegetables and jasmine rice",
+    description: "Tofu with coconut and vegetables",
     ingredients: [
-      "Coconut milk",
-      "Red curry paste",
-      "Mixed vegetables (bell peppers, broccoli, bamboo shoots, carrots)",
-      "Tofu cubes",
-      "Jasmine rice",
-      "Thai basil",
-      "Lime juice",
-      "Ginger and garlic",
+      "Tofu",
+      "Coconut",
+      "Vegetables",
       "Soy sauce"
     ],
     allergens: ["Soy (tofu, soy sauce)", "Tree nuts (coconut)"],
     calories: 480,
-    dietaryInfo: ["Vegan", "Dairy-free", "Gluten-free (with tamari)"]
+    dietaryInfo: ["Vegan"]
   }
 };
 
@@ -213,23 +165,10 @@ export function getMealIngredients(mealName: string): MealIngredients | null {
  * Format meal description for TTS
  */
 export function formatMealDescription(meal: MealIngredients): string {
-  const parts = [
-    `${meal.name}.`,
-    meal.description,
-    `This dish contains: ${meal.ingredients.slice(0, 5).join(", ")}`,
-  ];
-
-  if (meal.allergens.length > 0) {
-    parts.push(`Please note, this contains: ${meal.allergens.join(", ")}`);
-  }
-
-  if (meal.dietaryInfo.length > 0) {
-    parts.push(`Dietary information: ${meal.dietaryInfo.join(", ")}`);
-  }
-
-  parts.push(`Total calories: ${meal.calories}`);
-
-  return parts.join(". ");
+  const ingredientsList = meal.ingredients.join(", ");
+  const allergensList = meal.allergens.join(", ");
+  
+  return `${meal.name} contains ${ingredientsList}. Allergens: ${allergensList}`;
 }
 
 /**

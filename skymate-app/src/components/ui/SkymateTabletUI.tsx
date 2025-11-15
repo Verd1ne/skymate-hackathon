@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import {
 	Crown,
 	ClipboardList,
@@ -8,8 +8,8 @@ import {
 	MicOff,
 	Map as MapIcon,
 	CheckSquare,
-	Info,
 	Pill,
+	Cake,
 } from "lucide-react";
 import {
 	getAllSeatNumbers,
@@ -21,8 +21,20 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useInventory } from "../../hooks/useInventory";
 import { useTasks } from "../../hooks/useTasks";
 import type { Task as BackendTask } from "../../types";
+import SeatIcon from "../../assets/seat.svg?react";
+import { useToast } from "../shared/ToastContainer";
 
 type TabId = "gold" | "tasks" | "functions";
+
+function formatBirthday(iso?: string | null): string {
+	if (!iso) return "";
+	try {
+		const d = new Date(iso);
+		return d.toLocaleString(undefined, { month: "long", day: "numeric" });
+	} catch {
+		return iso || "";
+	}
+}
 
 function GoldMembersSeatPage() {
 	const allSeats = useMemo(() => getAllSeatNumbers(), []);
@@ -81,7 +93,7 @@ function GoldMembersSeatPage() {
 	return (
 		<div className="grid grid-cols-1 md:grid-cols-[1.4fr,1fr] gap-6">
 			{/* Seat map */}
-			<div className="bg-white border border-emerald-200 rounded-3xl p-5 shadow-lg shadow-emerald-100/60 flex flex-col">
+			<div className="bg-white border border-emerald-200 rounded-3xl p-5 shadow-lg shadow-emerald-100/60 flex flex-col max-w-[460px] mx-auto w-full">
 				<div className="flex items-center justify-between mb-4">
 					<div className="flex items-center gap-2">
 						<MapIcon className="text-emerald-700" size={20} />
@@ -93,7 +105,7 @@ function GoldMembersSeatPage() {
 					</div>
 					<div className="flex items-center gap-2 text-xs">
 						<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-50 border border-slate-300 text-slate-900">
-							<span className="inline-block w-3 h-3 rounded-sm bg-gradient-to-br from-slate-800 to-slate-700" />
+							<span className="inline-block w-3 h-3 rounded-sm bg-gradient-to-br from-slate-900 to-slate-700" />
 							Diamond
 						</span>
 						<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-600 text-amber-900">
@@ -101,40 +113,41 @@ function GoldMembersSeatPage() {
 							Gold
 						</span>
 						<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-50 border border-slate-300 text-slate-800">
-							<span className="inline-block w-3 h-3 rounded-sm bg-slate-400" />
+							<span className="inline-block w-3 h-3 rounded-sm bg-slate-300" />
 							Regular
 						</span>
 					</div>
 				</div>
 
-				<div className="relative flex-1 overflow-hidden rounded-2xl bg-gradient-to-b from-slate-50 via-emerald-50 to-slate-100 p-4">
+				<div className="relative flex-1 overflow-hidden rounded-2xl bg-gradient-to-b from-slate-50 via-emerald-50 to-slate-100 p-2">
 					{/* Dual aisles: between A–B and C–D */}
-					<div className="pointer-events-none absolute inset-y-6 left-[28%] w-12 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
-					<div className="pointer-events-none absolute inset-y-6 left-[76%] w-12 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
+					<div className="pointer-events-none absolute inset-y-6 left-[30%] w-6 -translate-x-1/2 bg-slate-100 border-x border-slate-200/60 rounded-full" />
+					<div className="pointer-events-none absolute inset-y-6 left-[74%] w-6 -translate-x-1/2 bg-slate-100 border-x border-slate-200/60 rounded-full" />
 
 					<div className="relative h-full flex">
-						{/* Column letters A B C D aligned to 6‑col grid (with aisles at 2 and 5) */}
-						<div className="pointer-events-none absolute left-10 right-6 top-0 grid grid-cols-[1fr_44px_1fr_1fr_44px_1fr] text-[11px] text-slate-500 font-medium px-6">
-							<span className="justify-self-start col-start-1">A</span>
-							<span className="justify-self-end col-start-3">B</span>
-							<span className="justify-self-start col-start-4">C</span>
-							<span className="justify-self-end col-start-6">D</span>
+						{/* Column letters A, BC (paired), D aligned to seat grid */}
+						<div className="pointer-events-none absolute left-4 right-3 top-0 grid grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)_minmax(0,1fr)_26px_minmax(0,1fr)] text-[11px] text-slate-500 font-medium px-2">
+							<span className="justify-self-end col-start-1 pr-1">A</span>
+							<span className="justify-self-center col-start-3 col-end-5">
+								BC
+							</span>
+							<span className="justify-self-start col-start-6 pl-1">D</span>
 						</div>
 
 						{/* Row numbers */}
-						<div className="flex flex-col justify-between mr-3 text-[11px] text-slate-500 font-medium py-6">
+						<div className="flex flex-col justify-between items-end mr-1 pr-1 text-[11px] text-slate-500 font-medium py-5 text-right">
 							{visualRows.map((row) => (
 								<span key={row.rowNumber}>{row.rowNumber}</span>
 							))}
 						</div>
 
 						{/* Seat layout: 1‑aisle‑1‑1‑aisle‑1 (A|B C|D) with slanted seats */}
-						<div className="flex-1 pt-4">
-							<div className="grid h-full grid-rows-6 gap-y-4">
+						<div className="flex-1 pt-2.5">
+							<div className="grid h-full grid-rows-6 gap-y-2">
 								{visualRows.map((row) => (
 									<div
 										key={row.rowNumber}
-										className="grid grid-cols-[1fr_44px_1fr_1fr_44px_1fr] gap-x-6 items-center"
+										className="grid grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)_minmax(0,1fr)_26px_minmax(0,1fr)] gap-x-2.5 items-center"
 									>
 										{row.seats.map((seatId, colIndex) => {
 											const isGold = goldSeatSet.has(seatId);
@@ -142,17 +155,17 @@ function GoldMembersSeatPage() {
 											const isSelected = selectedSeat === seatId;
 
 											const rotationByColumn = [
-												"rotate-[18deg]",
-												"-rotate-[18deg]",
-												"rotate-[18deg]",
-												"-rotate-[18deg]",
+												"rotate-[26deg]",
+												"-rotate-[26deg]",
+												"rotate-[26deg]",
+												"-rotate-[26deg]",
 											] as const;
 
 											const alignByColumn = [
-												"justify-self-start",
+												"justify-self-end",
 												"justify-self-end",
 												"justify-self-start",
-												"justify-self-end",
+												"justify-self-start",
 											] as const;
 
 											// Place seats in columns 1,3,4,6 to create aisles at 2 and 5
@@ -173,32 +186,32 @@ function GoldMembersSeatPage() {
 													type="button"
 													onClick={() => handleSelectSeat(seatId)}
 													className={[
-														"relative flex flex-col items-center gap-1 text-[11px]",
+														"relative flex flex-col items-center gap-0.5 text-[10px]",
 														colStartClass,
 														alignClass,
 													].join(" ")}
 												>
 													<div
 														className={[
-															"relative w-14 h-9 transform transition-transform",
+															"relative w-[3rem] h-[4rem] transform transition-transform",
 															rotationClass,
 															isSelected
 																? "scale-110 drop-shadow-lg"
 																: "drop-shadow",
 														].join(" ")}
 													>
-														<div
-															className={[
-																"absolute inset-0 rounded-lg border",
-																isDiamond
-																	? "bg-gradient-to-br from-slate-800 to-slate-700 border-slate-700"
-																	: isGold
-																	? "bg-gradient-to-br from-amber-700 via-amber-500 to-amber-400 border-amber-600"
-																	: "bg-gradient-to-br from-white to-slate-100 border-slate-300",
-															].join(" ")}
-														/>
-														{/* Headrest / console */}
-														<div className="absolute -top-1 left-1 w-4 h-3 rounded-md bg-white/95 border border-slate-200" />
+														<div className="absolute inset-0 flex items-center justify-center">
+															<SeatIcon
+																className={[
+																	"w-[4.75rem] h-[3.45rem]",
+																	isDiamond
+																		? "text-slate-900"
+																		: isGold
+																		? "text-amber-500"
+																		: "text-slate-400",
+																].join(" ")}
+															/>
+														</div>
 													</div>
 													<span className="text-slate-700 font-medium">
 														{seatId}
@@ -232,7 +245,7 @@ function GoldMembersSeatPage() {
 						<div className="flex items-baseline justify-between gap-4">
 							<div>
 								<p className="text-xs text-emerald-700/80 mb-1">Seat</p>
-								<p className="text-3xl font-semibold text-emerald-950">
+								<p className="text-2xl font-semibold text-emerald-950">
 									{selectedInfo.seatNumber}
 								</p>
 							</div>
@@ -245,8 +258,13 @@ function GoldMembersSeatPage() {
 								</p>
 							</div>
 						</div>
-
 						<div className="flex flex-wrap gap-2">
+							{diamondSeatSet.has(selectedInfo.seatNumber) && (
+								<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-400 text-xs text-slate-900">
+									<Crown size={14} className="text-slate-700" />
+									Diamond member
+								</span>
+							)}
 							{!diamondSeatSet.has(selectedInfo.seatNumber) &&
 								goldSeatSet.has(selectedInfo.seatNumber) && (
 									<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-500 text-xs text-amber-900">
@@ -281,23 +299,19 @@ function GoldMembersSeatPage() {
 								</span>
 							)}
 						</div>
-
-						<div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
-							<Info className="text-emerald-600 flex-shrink-0 mt-1" size={18} />
-							<div className="space-y-1">
-								<p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">
-									How Skymate uses this
-								</p>
-								<p className="text-xs text-emerald-900/80">
-									Gold members are surfaced first when you say{" "}
-									<span className="font-semibold text-emerald-50">
-										“skymate, tell me special tasks”
-									</span>{" "}
-									or when their orders are delayed. This card keeps their key
-									details at your fingertips during service.
-								</p>
+						{selectedInfo.birthday && (
+							<div className="mt-2 rounded-2xl border border-pink-200 bg-pink-50 p-4 flex items-start gap-3">
+								<Cake className="text-pink-600 flex-shrink-0 mt-1" size={18} />
+								<div className="space-y-1">
+									<p className="text-xs font-semibold text-pink-800 uppercase tracking-wide">
+										Birthday
+									</p>
+									<p className="text-sm text-pink-900">
+										{formatBirthday(selectedInfo.birthday)}
+									</p>
+								</div>
 							</div>
-						</div>
+						)}
 					</div>
 				) : (
 					<div className="flex-1 flex items-center justify-center text-center text-emerald-900/70 text-sm">
@@ -322,6 +336,10 @@ function TaskQueueInventoryPage() {
 		error: tasksError,
 		completeTask,
 	} = useTasks();
+
+	const { showSuccess, showWarning, showInfo, showError } = useToast();
+	const mealTaskIdsRef = useRef<Set<string>>(new Set());
+	const hasInitializedMealNotificationsRef = useRef<boolean>(false);
 
 	const activeTasks = tasks.filter(
 		(t) => t.status === "pending" || t.status === "in_progress"
@@ -388,6 +406,53 @@ function TaskQueueInventoryPage() {
 
 		return mapped.join(", ");
 	};
+
+	useEffect(() => {
+		if (!tasks || tasks.length === 0) {
+			mealTaskIdsRef.current = new Set();
+			hasInitializedMealNotificationsRef.current = false;
+			return;
+		}
+
+		const mealTasks = tasks.filter((task) => {
+			const descriptor = (task.item || task.request || "").toLowerCase();
+			return descriptor.includes("meal");
+		});
+
+		const prevIds = mealTaskIdsRef.current;
+
+		if (!hasInitializedMealNotificationsRef.current) {
+			hasInitializedMealNotificationsRef.current = true;
+			mealTaskIdsRef.current = new Set(mealTasks.map((task) => task.id));
+			return;
+		}
+
+		mealTasks.forEach((task) => {
+			if (prevIds.has(task.id)) return;
+
+			const passenger = getPassengerInfo(task.seat);
+			const isLoyalMember =
+				passenger?.membershipTier === "diamond" ||
+				passenger?.membershipTier === "gold" ||
+				passenger?.priorityMember === true;
+
+			const label =
+				formatTaskLabel(task.item || task.request) || "Meal service";
+			const message = `${task.seat} · ${label}`;
+
+			if (isLoyalMember) {
+				showSuccess("Meal request – loyal member", message, 4500);
+			} else if (task.priority === "urgent") {
+				showError("Urgent meal request", message, 4500);
+			} else if (task.priority === "high") {
+				showWarning("High-priority meal request", message, 4500);
+			} else {
+				showInfo("Meal request added", message, 4000);
+			}
+		});
+
+		mealTaskIdsRef.current = new Set(mealTasks.map((task) => task.id));
+	}, [tasks, showSuccess, showWarning, showInfo, showError, formatTaskLabel]);
 
 	return (
 		<div className="grid grid-cols-1 md:grid-cols-[1fr,2fr] gap-6">
@@ -503,7 +568,10 @@ function TaskQueueInventoryPage() {
 								normal: "Normal",
 							};
 							return (
-								<div key={column} className="flex flex-col px-3 min-h-[200px]">
+								<div
+									key={column}
+									className="flex flex-col px-1.5 min-h-[200px]"
+								>
 									<div className="flex items-center justify-between mb-2">
 										<p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">
 											{titleMap[column]}
@@ -877,10 +945,98 @@ function AssistantFunctionsPage({
 function SkymateTabletUI() {
 	const [activeTab, setActiveTab] = useState<TabId>("gold");
 	const [micActive, setMicActive] = useState<boolean>(false);
+	const [flightNumber, setFlightNumber] = useState<string>("");
+	const [employeeId, setEmployeeId] = useState<string>("");
+	const [hasStarted, setHasStarted] = useState<boolean>(false);
+	const [sparkVisible, setSparkVisible] = useState<boolean>(false);
+	const [exitingIntro, setExitingIntro] = useState<boolean>(false);
+
+	const handleStart = () => {
+		setExitingIntro(true);
+		window.setTimeout(() => setHasStarted(true), 650);
+		// tiny white sparkle on flight/crew indicator
+		setSparkVisible(true);
+		window.setTimeout(() => setSparkVisible(false), 1200);
+	};
+
+	if (!hasStarted) {
+		return (
+			<motion.div
+				className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-900 to-slate-900 text-emerald-50 flex items-center justify-center relative overflow-hidden"
+				animate={{ opacity: exitingIntro ? 0 : 1 }}
+				transition={{ duration: 0.6, ease: "easeOut" }}
+			>
+				<div className="pointer-events-none absolute inset-0">
+					<div className="absolute -top-40 -left-32 w-80 h-80 bg-emerald-500/25 blur-3xl rounded-full" />
+					<div className="absolute bottom-[-8rem] right-[-6rem] w-[22rem] h-[22rem] bg-emerald-300/20 blur-3xl rounded-full" />
+					<div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-slate-950/80 to-transparent" />
+				</div>
+
+				<motion.div
+					initial={{ opacity: 0, y: 40 }}
+					animate={{
+						opacity: exitingIntro ? 0 : 1,
+						y: exitingIntro ? 0 : 0,
+						scale: exitingIntro ? 0.85 : 1,
+					}}
+					transition={{ duration: 0.6, ease: "easeInOut" }}
+					className="relative z-10 w-full max-w-xl px-6"
+				>
+					<div className="mb-6 text-[11px] uppercase tracking-[0.35em] text-emerald-200/80">
+						Cathay · Skymate
+					</div>
+					<h1 className="text-4xl md:text-5xl font-semibold text-emerald-50 mb-3">
+						Ready for departure
+					</h1>
+
+					<div className="space-y-3">
+						<div>
+							<label className="text-[11px] uppercase tracking-[0.25em] text-slate-300">
+								Flight number
+							</label>
+							<input
+								type="text"
+								value={flightNumber}
+								onChange={(e) => setFlightNumber(e.target.value)}
+								placeholder="e.g. CX 659"
+								className="mt-1 w-full rounded-2xl bg-white/5 border border-emerald-400/60 px-4 py-3 text-sm text-emerald-50 placeholder:text-emerald-200/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/80 focus:border-emerald-300/80 backdrop-blur-sm"
+							/>
+						</div>
+
+						<div>
+							<label className="text-[11px] uppercase tracking-[0.25em] text-slate-300">
+								Employee ID
+							</label>
+							<input
+								type="text"
+								value={employeeId}
+								onChange={(e) => setEmployeeId(e.target.value)}
+								placeholder="Crew ID"
+								className="mt-1 w-full rounded-2xl bg-white/5 border border-emerald-400/60 px-4 py-3 text-sm text-emerald-50 placeholder:text-emerald-200/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/80 focus:border-emerald-300/80 backdrop-blur-sm mb-4"
+							/>
+						</div>
+
+						<button
+							type="button"
+							onClick={handleStart}
+							className="mt-6 inline-flex items-center justify-center w-full rounded-2xl bg-emerald-400 text-emerald-950 font-semibold text-sm py-3.5 shadow-xl shadow-emerald-500/40 hover:bg-emerald-300 transition-transform transform hover:translate-y-[1px]"
+						>
+							Start Skymate
+						</button>
+					</div>
+				</motion.div>
+			</motion.div>
+		);
+	}
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-emerald-50 via-slate-50 to-emerald-100 text-emerald-950">
-			<div className="max-w-5xl mx-auto min-h-screen flex flex-col">
+			<motion.div
+				initial={{ opacity: 0, y: 8, scale: 0.998 }}
+				animate={{ opacity: 1, y: 0, scale: 1 }}
+				transition={{ duration: 0.6, ease: "easeOut" }}
+				className="max-w-5xl mx-auto min-h-screen flex flex-col"
+			>
 				{/* Header */}
 				<header className="pt-6 pb-3 px-4 md:px-6 border-b border-emerald-200">
 					<div className="flex items-start justify-between gap-4">
@@ -912,8 +1068,27 @@ function SkymateTabletUI() {
 								/>
 								Skymate ready
 							</span>
-							<p className="text-[10px] text-emerald-700/80">
-								CX 659 · HKG → SIN · Galley rear
+							<p className="text-[10px] text-emerald-700/80 flex items-center gap-2">
+								{flightNumber ? (
+									<>
+										<span className="font-semibold">
+											{flightNumber.toUpperCase()}
+										</span>
+										{sparkVisible && (
+											<motion.span
+												initial={{ scale: 0.6, opacity: 0 }}
+												animate={{ scale: 1, opacity: 1 }}
+												exit={{ opacity: 0 }}
+												transition={{ duration: 0.45, ease: "easeOut" }}
+												className="inline-block w-2 h-2 rounded-full bg-white shadow-sm"
+											/>
+										)}
+										<span>·</span>
+									</>
+								) : (
+									"CX 659 · "
+								)}
+								HKG → SIN · Galley rear
 							</p>
 						</div>
 					</div>
@@ -972,7 +1147,7 @@ function SkymateTabletUI() {
 						</button>
 					</div>
 				</nav>
-			</div>
+			</motion.div>
 		</div>
 	);
 }

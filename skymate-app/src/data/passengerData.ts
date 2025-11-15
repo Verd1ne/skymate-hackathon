@@ -29,6 +29,18 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 	},
+	"1C": {
+		seatNumber: "1C",
+		passengerName: "Priya Nair",
+		mealPreference: "chicken",
+		membershipTier: "diamond",
+	},
+	"1D": {
+		seatNumber: "1D",
+		passengerName: "Kenji Sato",
+		mealPreference: "fish",
+		membershipTier: "gold",
+	},
 	"2A": {
 		seatNumber: "2A",
 		passengerName: "Michael Liu",
@@ -38,6 +50,18 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "2B",
 		passengerName: "Emily Zhang",
 		mealPreference: "fish",
+	},
+	"2C": {
+		seatNumber: "2C",
+		passengerName: "Hannah Lee",
+		mealPreference: "vegetarian",
+		dietaryRestrictions: ["vegetarian"],
+	},
+	"2D": {
+		seatNumber: "2D",
+		passengerName: "Omar Farouk",
+		mealPreference: "beef",
+		membershipTier: "gold",
 	},
 	"3A": {
 		seatNumber: "3A",
@@ -50,6 +74,17 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegan",
 		dietaryRestrictions: ["vegan"],
 	},
+	"3C": {
+		seatNumber: "3C",
+		passengerName: "Wei Zhang",
+		mealPreference: "chicken",
+		membershipTier: "gold",
+	},
+	"3D": {
+		seatNumber: "3D",
+		passengerName: "Sofia Rossi",
+		mealPreference: "fish",
+	},
 	"4A": {
 		seatNumber: "4A",
 		passengerName: "Robert Lee",
@@ -58,6 +93,18 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 	"4B": {
 		seatNumber: "4B",
 		passengerName: "Jennifer Ng",
+		mealPreference: "vegetarian",
+		dietaryRestrictions: ["vegetarian"],
+	},
+	"4C": {
+		seatNumber: "4C",
+		passengerName: "Daniel Evans",
+		mealPreference: "beef",
+		membershipTier: "diamond",
+	},
+	"4D": {
+		seatNumber: "4D",
+		passengerName: "Nurul Aisyah",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 	},
@@ -71,6 +118,18 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		passengerName: "Michelle Ho",
 		mealPreference: "fish",
 	},
+	"5C": {
+		seatNumber: "5C",
+		passengerName: "Mateo Alvarez",
+		mealPreference: "chicken",
+		membershipTier: "gold",
+	},
+	"5D": {
+		seatNumber: "5D",
+		passengerName: "Chen Wei",
+		mealPreference: "beef",
+		membershipTier: "diamond",
+	},
 
 	// Additional Business Class - Row 6-10
 	"6A": {
@@ -83,6 +142,18 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		passengerName: "Monica Geller",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+	},
+	"6C": {
+		seatNumber: "6C",
+		passengerName: "Liam O'Connor",
+		mealPreference: "fish",
+	},
+	"6D": {
+		seatNumber: "6D",
+		passengerName: "Aisha Khan",
+		mealPreference: "vegetarian",
+		dietaryRestrictions: ["vegetarian"],
+		membershipTier: "gold",
 	},
 	"7A": {
 		seatNumber: "7A",

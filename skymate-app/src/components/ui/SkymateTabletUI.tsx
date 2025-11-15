@@ -4,6 +4,8 @@ import {
 	ClipboardList,
 	Sparkles,
 	Headphones,
+	Mic,
+	MicOff,
 	Map as MapIcon,
 	CheckSquare,
 	Info,
@@ -105,15 +107,17 @@ function GoldMembersSeatPage() {
 				</div>
 
 				<div className="relative flex-1 overflow-hidden rounded-2xl bg-gradient-to-b from-slate-50 via-emerald-50 to-slate-100 p-4">
-					{/* Central aisle */}
-					<div className="pointer-events-none absolute inset-y-6 left-1/2 w-14 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
+					{/* Dual aisles: between A–B and C–D */}
+					<div className="pointer-events-none absolute inset-y-6 left-[28%] w-12 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
+					<div className="pointer-events-none absolute inset-y-6 left-[75%] w-12 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
 
 					<div className="relative h-full flex">
-						{/* Column letters A B C D */}
-						<div className="pointer-events-none absolute left-10 right-6 top-0 flex justify-between text-[11px] text-slate-500 font-medium px-6">
-							{["A", "B", "C", "D"].map((letter) => (
-								<span key={letter}>{letter}</span>
-							))}
+						{/* Column letters A B C D aligned to 6‑col grid (with aisles at 2 and 5) */}
+						<div className="pointer-events-none absolute left-10 right-6 top-0 grid grid-cols-[1fr_44px_1fr_1fr_44px_1fr] text-[11px] text-slate-500 font-medium px-6">
+							<span className="justify-self-start col-start-1">A</span>
+							<span className="justify-self-end col-start-3">B</span>
+							<span className="justify-self-start col-start-4">C</span>
+							<span className="justify-self-end col-start-6">D</span>
 						</div>
 
 						{/* Row numbers */}
@@ -123,13 +127,13 @@ function GoldMembersSeatPage() {
 							))}
 						</div>
 
-						{/* Seat layout: 1-2-1 style with slanted seats in 4 columns */}
+						{/* Seat layout: 1‑aisle‑1‑1‑aisle‑1 (A|B C|D) with slanted seats */}
 						<div className="flex-1 pt-4">
 							<div className="grid h-full grid-rows-6 gap-y-4">
 								{visualRows.map((row) => (
 									<div
 										key={row.rowNumber}
-										className="grid grid-cols-4 gap-x-6 items-center"
+										className="grid grid-cols-[1fr_44px_1fr_1fr_44px_1fr] gap-x-6 items-center"
 									>
 										{row.seats.map((seatId, colIndex) => {
 											const isGold = goldSeatSet.has(seatId);
@@ -150,8 +154,17 @@ function GoldMembersSeatPage() {
 												"justify-self-end",
 											] as const;
 
+											// Place seats in columns 1,3,4,6 to create aisles at 2 and 5
+											const colStartByColumn = [
+												"col-start-1",
+												"col-start-3",
+												"col-start-4",
+												"col-start-6",
+											] as const;
+
 											const rotationClass = rotationByColumn[colIndex];
 											const alignClass = alignByColumn[colIndex];
+											const colStartClass = colStartByColumn[colIndex];
 
 											return (
 												<button
@@ -160,6 +173,7 @@ function GoldMembersSeatPage() {
 													onClick={() => handleSelectSeat(seatId)}
 													className={[
 														"relative flex flex-col items-center gap-1 text-[11px]",
+														colStartClass,
 														alignClass,
 													].join(" ")}
 												>
@@ -474,14 +488,14 @@ function TaskQueueInventoryPage() {
 				<div className="flex-1">
 					<div className="grid grid-cols-1 md:grid-cols-3 h-full md:divide-x md:divide-emerald-200/60">
 						{["cathay", "priority", "normal"].map((column) => {
+							// Only show active (non-completed) tasks in the columns.
 							const columnTasks = tasks
-								.filter((t) => getTaskBucket(t as BackendTask) === column)
-								.sort((a, b) => {
-									const aDone = a.status === "completed";
-									const bDone = b.status === "completed";
-									if (aDone !== bDone) return Number(aDone) - Number(bDone);
-									return a.timestamp - b.timestamp;
-								});
+								.filter(
+									(t) =>
+										getTaskBucket(t as BackendTask) === column &&
+										t.status !== "completed"
+								)
+								.sort((a, b) => a.timestamp - b.timestamp);
 							const titleMap: Record<string, string> = {
 								cathay: "Priority Guest",
 								priority: "Urgent",
@@ -559,7 +573,7 @@ function TaskQueueInventoryPage() {
 																		</span>
 																	)}
 																</button>
-																<div className="flex items-start gap-2.5 flex-1">
+																<div className="flex items-center gap-2.5 flex-1">
 																	<div
 																		className={[
 																			"flex items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-sm shrink-0 overflow-hidden leading-none text-center",
@@ -592,12 +606,6 @@ function TaskQueueInventoryPage() {
 																			<span className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-300 text-[10px] text-sky-900">
 																				<Crown className="w-3 h-3 text-sky-600" />
 																				Diamond priority guest
-																			</span>
-																		)}
-																		{!isDiamondTask && isGoldTask && (
-																			<span className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-[10px] text-amber-900">
-																				<Crown className="w-3 h-3 text-amber-500" />
-																				Gold priority guest
 																			</span>
 																		)}
 																	</div>
@@ -703,6 +711,31 @@ function AssistantFunctionsPage() {
 	const [expandedId, setExpandedId] = useState<number | null>(null);
 	const toggleDetails = (id: number) =>
 		setExpandedId((prev) => (prev === id ? null : id));
+	const [micEnabled, setMicEnabled] = useState<boolean>(false);
+	const [requestingMic, setRequestingMic] = useState<boolean>(false);
+	const [micError, setMicError] = useState<string | null>(null);
+
+	const requestMicrophone = async () => {
+		try {
+			setMicError(null);
+			setRequestingMic(true);
+			if (!navigator.mediaDevices?.getUserMedia) {
+				throw new Error("Microphone API not available in this browser.");
+			}
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			// Immediately stop tracks; we only wanted permission here
+			stream.getTracks().forEach((t) => t.stop());
+			setMicEnabled(true);
+		} catch (err: any) {
+			console.error("Microphone permission error:", err);
+			setMicError(
+				err?.message || "Unable to access microphone. Please check permissions."
+			);
+			setMicEnabled(false);
+		} finally {
+			setRequestingMic(false);
+		}
+	};
 
 	return (
 		<div className="h-full flex flex-col gap-4">
@@ -713,23 +746,54 @@ function AssistantFunctionsPage() {
 						<p className="text-xs uppercase tracking-[0.25em] text-emerald-600/90">
 							Voice Interface
 						</p>
-						<h2 className="text-lg font-semibold text-white">
+						<h2 className="text-lg font-semibold text-emerald-900">
 							Wake word: “skymate”
 						</h2>
 					</div>
 				</div>
 				<div className="text-right">
-					<span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-emerald-50 border border-emerald-300 text-xs text-emerald-900">
-						<span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-						Listening for “skymate”
-					</span>
+					<button
+						type="button"
+						onClick={micEnabled ? undefined : requestMicrophone}
+						disabled={requestingMic || micEnabled}
+						className={[
+							"inline-flex items-center gap-2 rounded-full px-3 py-1 border text-xs",
+							micEnabled
+								? "bg-emerald-50 border-emerald-300 text-emerald-900"
+								: "bg-white border-emerald-300 text-emerald-900 hover:bg-emerald-50",
+						].join(" ")}
+						aria-pressed={micEnabled}
+						aria-label={micEnabled ? "Microphone enabled" : "Enable microphone"}
+					>
+						{micEnabled ? (
+							<>
+								<span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+								Listening for “skymate”
+								<Mic className="w-3.5 h-3.5 text-emerald-700" />
+							</>
+						) : (
+							<>
+								{requestingMic ? (
+									<span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
+								) : (
+									<MicOff className="w-3.5 h-3.5 text-emerald-700" />
+								)}
+								{requestingMic
+									? "Requesting microphone..."
+									: "Enable microphone"}
+							</>
+						)}
+					</button>
 					<p className="mt-1 text-[11px] text-emerald-700/80">
 						Example: “
-						<span className="font-semibold text-emerald-50">
+						<span className="font-semibold text-emerald-900">
 							skymate, 52B requests chicken meal
 						</span>
 						”
 					</p>
+					{micError && (
+						<p className="mt-1 text-[11px] text-red-600">{micError}</p>
+					)}
 				</div>
 			</div>
 

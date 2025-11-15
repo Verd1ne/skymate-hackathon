@@ -9,6 +9,7 @@ import {
 	Map as MapIcon,
 	CheckSquare,
 	Info,
+	Pill,
 } from "lucide-react";
 import {
 	getAllSeatNumbers,
@@ -273,6 +274,12 @@ function GoldMembersSeatPage() {
 									{r}
 								</span>
 							))}
+							{selectedInfo.allergies && (
+								<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-300 text-xs text-rose-900">
+									<Pill size={14} className="text-rose-600" />
+									Allergies: {selectedInfo.allergies.join(" and ")}
+								</span>
+							)}
 						</div>
 
 						<div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
@@ -479,7 +486,7 @@ function TaskQueueInventoryPage() {
 					</span>
 				</div>
 
-				<div className="flex-1">
+				<div className="flex-1 -mx-3">
 					<div className="grid grid-cols-1 md:grid-cols-3 h-full md:divide-x md:divide-emerald-200/60">
 						{["cathay", "priority", "normal"].map((column) => {
 							// Only show active (non-completed) tasks in the columns.
@@ -559,7 +566,7 @@ function TaskQueueInventoryPage() {
 																<button
 																	type="button"
 																	onClick={() => completeTask(task.id)}
-																	className="mt-0.5 w-5 h-5 rounded-full border border-emerald-300 flex items-center justify-center bg-white hover:bg-emerald-50 shadow-sm"
+																	className="mt-0.5 w-5 h-5 aspect-square rounded-full border border-emerald-300 flex items-center justify-center bg-white hover:bg-emerald-50 shadow-sm"
 																>
 																	{isDone && (
 																		<span className="text-[11px] text-emerald-700">
@@ -572,8 +579,8 @@ function TaskQueueInventoryPage() {
 																		className={[
 																			"flex items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-sm shrink-0 overflow-hidden leading-none text-center",
 																			isDiamondTask
-																				? "w-9 h-9 bg-gradient-to-br from-slate-800 to-slate-700 text-white text-sm"
-																				: "w-8 h-8",
+																				? "w-7 h-7 bg-gradient-to-br from-slate-800 to-slate-700 text-white text-[10px]"
+																				: "w-6 h-6",
 																			isDiamondTask
 																				? ""
 																				: isGoldTask
@@ -586,7 +593,7 @@ function TaskQueueInventoryPage() {
 																	<div className="flex flex-col">
 																		<p
 																			className={[
-																				"text-sm font-semibold text-emerald-950",
+																				"text-xs font-semibold text-emerald-950",
 																				isDone
 																					? "line-through text-emerald-500"
 																					: "",

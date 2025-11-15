@@ -116,6 +116,28 @@ const AVIATION_PHRASE_HINTS = [
 	"what's in",
 	"what is in",
 	"ingredients",
+	// Seat information commands
+	"remind me of seat",
+	"tell me about seat",
+	"show me seat",
+	"seat information",
+	"seat info",
+	"who is in seat",
+	"passenger in seat",
+	// Special requests commands
+	"remind me of special requests",
+	"tell me about special requests",
+	"list special requests",
+	"show special requests",
+	"what are the special requests",
+	"special requests",
+	// Priority members commands
+	"who is priority member",
+	"who are priority members",
+	"list priority members",
+	"show priority members",
+	"which passengers are priority members",
+	"priority members",
 	// Meals (core items) - EXPANDED with missing items
 	"chicken meal",
 	"beef meal",

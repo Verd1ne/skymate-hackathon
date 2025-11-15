@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
 	Crown,
 	ClipboardList,
@@ -20,11 +20,32 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useInventory } from "../../hooks/useInventory";
 import { useTasks } from "../../hooks/useTasks";
 import type { Task as BackendTask } from "../../types";
+import { db, ref, onValue } from "../../lib/firebase";
 
 type TabId = "gold" | "tasks" | "functions";
 
 function GoldMembersSeatPage() {
 	const allSeats = useMemo(() => getAllSeatNumbers(), []);
+	const [pastFoodData, setPastFoodData] = useState<Record<string, string[]>>({});
+
+	// Fetch past food data from Firebase
+	useEffect(() => {
+		if (!db) return;
+
+		const pastFoodRef = ref(db, "passengerPastFood");
+		const unsubscribe = onValue(pastFoodRef, (snapshot) => {
+			const data = snapshot.val();
+			if (data) {
+				console.log("📊 Past food data from Firebase:", data);
+				setPastFoodData(data);
+			} else {
+				console.log("📊 No past food data in Firebase yet");
+				setPastFoodData({});
+			}
+		});
+
+		return () => unsubscribe();
+	}, []);
 
 	const { goldSeatSet, diamondSeatSet } = useMemo(() => {
 		const gold = new Set<string>();
@@ -68,14 +89,39 @@ function GoldMembersSeatPage() {
 	}, []);
 
 	const [selectedSeat, setSelectedSeat] = useState<string | null>("1A");
-	const [selectedInfo, setSelectedInfo] = useState<PassengerInfo | null>(() =>
-		getPassengerInfo("1A")
-	);
+	const [selectedInfo, setSelectedInfo] = useState<PassengerInfo | null>(() => {
+		const info = getPassengerInfo("1A");
+		return info ? { ...info, pastFood: pastFoodData["1A"] || info.pastFood || [] } : null;
+	});
 
 	const handleSelectSeat = (seat: string) => {
 		setSelectedSeat(seat);
-		setSelectedInfo(getPassengerInfo(seat));
+		const info = getPassengerInfo(seat);
+		if (info) {
+			// Merge static pastFood with Firebase pastFood
+			const normalizedSeat = seat.replace(/\s+/g, "").toUpperCase();
+			const firebasePastFood = pastFoodData[normalizedSeat] || [];
+			const staticPastFood = info.pastFood || [];
+			// Combine and remove duplicates
+			const mergedPastFood = [...new Set([...staticPastFood, ...firebasePastFood])];
+			console.log(`🍽️ Seat ${normalizedSeat} past food:`, {
+				firebase: firebasePastFood,
+				static: staticPastFood,
+				merged: mergedPastFood
+			});
+			setSelectedInfo({ ...info, pastFood: mergedPastFood });
+		} else {
+			setSelectedInfo(null);
+		}
 	};
+
+	// Update selected info when pastFoodData changes
+	useEffect(() => {
+		if (selectedSeat) {
+			handleSelectSeat(selectedSeat);
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [pastFoodData]);
 
 	return (
 		<div className="grid grid-cols-1 md:grid-cols-[1.4fr,1fr] gap-6">
@@ -253,6 +299,12 @@ function GoldMembersSeatPage() {
 										Gold member
 									</span>
 								)}
+							{diamondSeatSet.has(selectedInfo.seatNumber) && (
+								<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-600 text-xs text-slate-900">
+									<Crown size={14} className="text-slate-700" />
+									Diamond member
+								</span>
+							)}
 							<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-xs text-emerald-900">
 								<span className="w-2 h-2 rounded-full bg-emerald-400" />
 								Primary meal: {selectedInfo.mealPreference}
@@ -275,6 +327,27 @@ function GoldMembersSeatPage() {
 							))}
 						</div>
 
+						{selectedInfo.pastFood && selectedInfo.pastFood.length > 0 && (
+							<div className="mt-3 rounded-2xl border border-purple-200 bg-purple-50 p-4">
+								<p className="text-xs font-semibold text-purple-900 uppercase tracking-wide mb-2">
+									Previous Orders
+								</p>
+								<div className="flex flex-wrap gap-1.5">
+									{selectedInfo.pastFood.map((food, idx) => (
+										<span
+											key={idx}
+											className="inline-flex items-center px-2 py-1 rounded-md bg-white border border-purple-200 text-xs text-purple-900"
+										>
+											{food}
+										</span>
+									))}
+								</div>
+								<p className="text-[11px] text-purple-900/70 mt-2 italic">
+									History helps personalize service and anticipate preferences
+								</p>
+							</div>
+						)}
+
 						<div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
 							<Info className="text-emerald-600 flex-shrink-0 mt-1" size={18} />
 							<div className="space-y-1">
@@ -284,7 +357,7 @@ function GoldMembersSeatPage() {
 								<p className="text-xs text-emerald-900/80">
 									Gold members are surfaced first when you say{" "}
 									<span className="font-semibold text-emerald-50">
-										“skymate, tell me special tasks”
+										"skymate, tell me special tasks"
 									</span>{" "}
 									or when their orders are delayed. This card keeps their key
 									details at your fingertips during service.

@@ -2,30 +2,14 @@
 
 A modern flight assistant application built with React, TypeScript, and Vite.
 
-## 🚀 NEW: Automatic Motion-Triggered Detection
+## ✨ Features
 
-**Now featuring hands-free, automatic inventory tracking!**
-
-The system automatically detects when items are taken out or put into cabinets:
-- ✅ **No manual button press** - Just move items naturally
-- ✅ **Automatic motion detection** - Monitors camera feed continuously
-- ✅ **Post-event classification** - Records 5-second clips and analyzes
-- ✅ **YOLOv8-powered** - Local, offline object detection
-- ✅ **Action classification** - Detects "take out", "put in", or "idle"
-- ✅ **Multi-frame analysis** - Compares start vs end for accuracy
-
-### How It Works
-
-1. Camera continuously monitors for motion
-2. Motion detected → Records 5-second clip (25 frames)
-3. Analyzes frames with YOLOv8
-4. Compares first 3 frames vs last 3 frames
-5. Classifies action: object disappeared = "take out", appeared = "put in"
-6. Total latency: ~7-12 seconds from motion to result
-
-See [`MOTION_DETECTION_QUICK_START.md`](./MOTION_DETECTION_QUICK_START.md) for usage guide.
-
-See [`MOTION_DETECTION_IMPLEMENTATION.md`](./MOTION_DETECTION_IMPLEMENTATION.md) for technical details.
+**Voice-Powered Task Management:**
+- 🎤 **Voice Commands** - Create and manage tasks with natural language
+- ✅ **Task Tracking** - Real-time task management with Firebase
+- 📦 **Inventory Integration** - Automatic stock checking and reservation
+- 🔊 **Audio Feedback** - Spoken confirmations for all actions
+- 👥 **Priority Management** - Smart task prioritization based on passenger status
 
 ## Setup
 
@@ -40,16 +24,15 @@ VITE_FIREBASE_API_KEY=your_firebase_api_key
 VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 VITE_FIREBASE_DATABASE_URL=https://your_project.firebaseio.com
 VITE_FIREBASE_PROJECT_ID=your_project_id
-# VITE_OPENAI_API_KEY=your_openai_key  # No longer required - using local YOLOv8
 VITE_DEEPGRAM_API_KEY=your_deepgram_key
+VITE_AZURE_SPEECH_KEY=your_azure_speech_key
+VITE_AZURE_SPEECH_REGION=your_azure_region
 ```
 
 3. Start the development server:
 ```bash
 npm run dev
 ```
-
-The YOLOv8 model will automatically load on startup.
 
 ## Project Structure
 

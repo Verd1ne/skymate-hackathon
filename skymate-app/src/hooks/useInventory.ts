@@ -12,21 +12,8 @@ export interface InventoryItem {
   timestamp: number;
 }
 
-export interface QueueItem {
-	id: string;
-	inventoryItemId: string;
-	name: string;
-	quantity: number;
-	unit: string;
-	category: string;
-	takenAt: number;
-	takenBy?: string;
-	status: "in_use" | "pending_deletion";
-}
-
 export function useInventory() {
 	const [mainInventory, setMainInventory] = useState<InventoryItem[]>([]);
-	const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -62,36 +49,6 @@ export function useInventory() {
 				console.error("Firebase inventory error:", error);
 				setError(`Inventory error: ${error.message}`);
 				setLoading(false);
-			}
-		);
-
-		return () => unsubscribe();
-	}, []);
-
-	// Listen to Queue
-	useEffect(() => {
-		if (!db) return;
-
-		const queueRef = ref(db, "inventory/queue");
-
-		const unsubscribe = onValue(
-			queueRef,
-			(snapshot) => {
-				const data = snapshot.val();
-				if (data) {
-					const items = Object.entries(data).map(
-						([id, item]: [string, any]) => ({
-							id,
-							...item,
-						})
-					);
-					setQueueItems(items.sort((a, b) => b.takenAt - a.takenAt));
-				} else {
-					setQueueItems([]);
-				}
-			},
-			(error: any) => {
-				console.error("Firebase queue error:", error);
 			}
 		);
 
@@ -235,122 +192,6 @@ export function useInventory() {
 		}
 	};
 
-	/**
-	 * Move item to queue (when taken for use)
-	 */
-	const moveToQueue = async (
-		itemId: string,
-		quantityTaken: number = 1,
-		takenBy?: string
-	) => {
-		if (!db) {
-			throw new Error("Firebase not configured");
-		}
-
-		try {
-			const item = mainInventory.find((i) => i.id === itemId);
-			if (!item) {
-				throw new Error("Item not found in inventory");
-			}
-
-			if (item.quantity < quantityTaken) {
-				throw new Error("Insufficient quantity in inventory");
-			}
-
-			// Deduct from main inventory
-			await updateInventoryQuantity(itemId, item.quantity - quantityTaken);
-
-			// Add to queue
-			const queueRef = ref(db, "inventory/queue");
-			await push(queueRef, {
-				inventoryItemId: itemId,
-				name: item.name,
-				quantity: quantityTaken,
-				unit: item.unit,
-				category: item.category,
-				takenAt: Date.now(),
-				takenBy: takenBy || "Unknown",
-				status: "in_use",
-			});
-
-			console.log(
-				`✅ Moved ${quantityTaken} ${item.unit} of ${item.name} to queue`
-			);
-		} catch (error: any) {
-			console.error("Failed to move item to queue:", error);
-			throw error;
-		}
-	};
-
-	/**
-	 * Complete queue item - this DELETES the item from main inventory
-	 * Use this when the item is consumed/used and won't be returned
-	 */
-	const completeQueueItem = async (queueItemId: string) => {
-		if (!db) {
-			throw new Error("Firebase not configured");
-		}
-
-		try {
-			const queueItem = queueItems.find((i) => i.id === queueItemId);
-			if (!queueItem) {
-				throw new Error("Queue item not found");
-			}
-
-			// Simply remove from queue
-			// The quantity was already deducted from main inventory when moved to queue
-			const queueItemRef = ref(db, `inventory/queue/${queueItemId}`);
-			await remove(queueItemRef);
-
-			console.log(
-				`✅ Completed queue item: ${queueItem.name} (deleted from system)`
-			);
-		} catch (error: any) {
-			console.error("Failed to complete queue item:", error);
-			throw error;
-		}
-	};
-
-	/**
-	 * Return item from queue back to main inventory
-	 * Use this to undo/cancel a queue operation
-	 */
-	const returnFromQueue = async (queueItemId: string) => {
-		if (!db) {
-			throw new Error("Firebase not configured");
-		}
-
-		try {
-			const queueItem = queueItems.find((i) => i.id === queueItemId);
-			if (!queueItem) {
-				throw new Error("Queue item not found");
-			}
-
-			const mainItem = mainInventory.find(
-				(i) => i.id === queueItem.inventoryItemId
-			);
-			if (!mainItem) {
-				throw new Error("Original inventory item not found");
-			}
-
-			// Return quantity to main inventory
-			await updateInventoryQuantity(
-				queueItem.inventoryItemId,
-				mainItem.quantity + queueItem.quantity
-			);
-
-			// Remove from queue
-			const queueItemRef = ref(db, `inventory/queue/${queueItemId}`);
-			await remove(queueItemRef);
-
-			console.log(
-				`✅ Returned ${queueItem.quantity} ${queueItem.unit} of ${queueItem.name} to inventory`
-			);
-		} catch (error: any) {
-			console.error("Failed to return item from queue:", error);
-			throw error;
-		}
-	};
 
 	/**
 	 * Delete an item completely from main inventory
@@ -412,7 +253,7 @@ export function useInventory() {
 	};
 
 	/**
-	 * Reserve item for task - moves to queue and reduces main inventory
+	 * Reserve item for task - reduces main inventory
 	 * Called when a task is created
 	 */
 	const reserveItemForTask = async (
@@ -453,19 +294,6 @@ export function useInventory() {
 					const itemRef = ref(db, `inventory/main/${itemId}`);
 					await update(itemRef, { quantity: newQuantity });
 
-					// Add to queue
-					const queueRef = ref(db, "inventory/queue");
-					await push(queueRef, {
-						inventoryItemId: itemId,
-						name: item.name,
-						quantity: quantityNeeded,
-						unit: item.unit,
-						category: item.category,
-						takenAt: Date.now(),
-						takenBy: seat,
-						status: "in_use",
-					});
-
 					console.log(
 						`✅ Reserved ${quantityNeeded} ${item.unit} of ${item.name} for seat ${seat}. Main inventory: ${item.quantity} → ${newQuantity}`
 					);
@@ -483,15 +311,11 @@ export function useInventory() {
 
 	return {
 		mainInventory,
-		queueItems,
 		loading,
 		error,
 		initializeInventory,
 		addInventoryItem,
 		updateInventoryQuantity,
-		moveToQueue,
-		completeQueueItem,
-		returnFromQueue,
 		deleteInventoryItem,
 		checkStock,
 		reserveItemForTask,

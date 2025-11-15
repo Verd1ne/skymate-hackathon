@@ -259,8 +259,8 @@ export function useTasks() {
 				completedAt: Date.now(),
 			});
 			
-			// Note: Inventory is now deducted at task creation time (moved to queue)
-			// When task is completed, the item remains in the queue as "consumed"
+			// Note: Inventory is deducted at task creation time
+			// When task is completed, the item quantity has already been reduced
 		} catch (error: any) {
 			console.error("Failed to complete task:", error);
 			throw error;

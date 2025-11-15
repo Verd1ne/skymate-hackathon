@@ -1968,7 +1968,7 @@ function VoiceInput() {
             return; // Exit without creating task
           }
 
-          // Reserve the item - move to queue and reduce main inventory
+          // Reserve the item - reduce main inventory
           const reserved = await reserveItemForTask(
             inventoryItemName,
             parsedIntent.seat,

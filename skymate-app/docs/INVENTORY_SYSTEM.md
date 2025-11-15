@@ -2,22 +2,15 @@
 
 ## Overview
 
-The Inventory Management System is a Firebase-based solution for tracking galley items across two stages:
-
-1. **Main Inventory** - All available items in stock
-2. **Queue** - Items currently being used/worked on
+The Inventory Management System is a Firebase-based solution for tracking galley items. When a task is created for a passenger, inventory is automatically reserved and deducted from available stock.
 
 ## Key Concept
 
-When items are moved to the **Queue**, they are:
+When a task is created:
 
-- Deducted from **Main Inventory** quantity
-- Added to the **Queue** as "in use"
-
-When **Queue** work is completed, the item is:
-
-- Removed from the **Queue**
-- **NOT** returned to Main Inventory (consumed/used)
+- Items are **deducted from Main Inventory** immediately
+- The task system tracks what items are allocated to which passengers
+- When the task is completed, items are considered consumed (already deducted)
 
 ## Database Structure
 
@@ -25,28 +18,28 @@ When **Queue** work is completed, the item is:
 
 ```
 inventory/
-  ├── main/
-  │   ├── {itemId1}
-  │   │   ├── name: "Vegetarian Meals"
-  │   │   ├── quantity: 12
-  │   │   ├── threshold: 5
-  │   │   ├── unit: "meals"
-  │   │   ├── category: "food"
-  │   │   └── timestamp: 1699564800000
-  │   └── {itemId2}
-  │       └── ...
-  └── queue/
-      ├── {queueId1}
-      │   ├── inventoryItemId: "itemId1"
+  └── main/
+      ├── {itemId1}
       │   ├── name: "Vegetarian Meals"
-      │   ├── quantity: 2
+      │   ├── quantity: 12
+      │   ├── threshold: 5
       │   ├── unit: "meals"
       │   ├── category: "food"
-      │   ├── takenAt: 1699564900000
-      │   ├── takenBy: "Flight Attendant #1"
-      │   └── status: "in_use"
-      └── {queueId2}
+      │   └── timestamp: 1699564800000
+      └── {itemId2}
           └── ...
+
+tasks/
+  ├── {taskId1}
+  │   ├── seat: "52B"
+  │   ├── request: "52B wants chicken meal"
+  │   ├── type: "meal"
+  │   ├── item: "chicken meal"
+  │   ├── priority: "normal"
+  │   ├── status: "pending"
+  │   └── timestamp: 1699564900000
+  └── {taskId2}
+      └── ...
 ```
 
 ## Features
@@ -58,13 +51,13 @@ inventory/
   - 🔴 **Critical**: Quantity ≤ threshold
   - 🟠 **Low**: Quantity ≤ threshold × 1.5
   - 🟢 **OK**: Quantity > threshold × 1.5
-- **Move to Queue**: Select item and specify quantity
+- **Automatic deduction**: Items are deducted when tasks are created
 
-### 2. Queue Management
+### 2. Task-Inventory Integration
 
-- **View in-use items** with timestamp
-- **Return to Inventory**: Undo/cancel queue operation
-- **Complete**: Mark as used and remove from system
+- **Automatic reservation**: When a task is created, inventory is automatically checked and reserved
+- **Stock validation**: System prevents task creation if items are out of stock
+- **Real-time tracking**: Tasks show which items are allocated to which seats
 
 ### 3. Real-time Sync
 
@@ -76,32 +69,30 @@ inventory/
 
 ### Initialize Inventory (First Time Only)
 
-1. Navigate to the **Queue** tab in Galley App
-2. Click **"Initialize Inventory"** button
-3. Default items will be added to Main Inventory
+1. Open the application for the first time
+2. Inventory will be automatically initialized with default items
+3. View current stock levels in the Inventory tab
 
-### Move Item to Queue
+### Create a Task (Automatic Inventory Deduction)
 
-1. Click on an item in **Main Inventory**
-2. Adjust the **quantity** you want to move
-3. Click **"Move to Queue"**
-4. Item quantity is deducted from Main Inventory
-5. Item appears in Queue column
+1. Use voice command: "Skymate, 52B wants chicken meal"
+2. System automatically:
+   - Checks if item is in stock
+   - Deducts quantity from Main Inventory
+   - Creates task for seat 52B
+3. If out of stock, you'll receive an alert
 
-### Complete Queue Item (Delete from System)
+### Complete a Task
 
-1. In **Queue** column, find the item
-2. Click **"Complete"** button
-3. Confirm the action
-4. Item is removed from Queue
-5. **Main Inventory is NOT affected** (already deducted)
+1. View tasks in the Task list
+2. Mark task as complete when delivered
+3. Inventory remains deducted (item consumed)
 
-### Return from Queue (Undo)
+### Manual Inventory Adjustment
 
-1. In **Queue** column, find the item
-2. Click **"Return"** button
-3. Item quantity is restored to Main Inventory
-4. Item is removed from Queue
+1. Navigate to Inventory Management
+2. Select item to adjust
+3. Update quantity manually if needed (for restocking)
 
 ## API Reference
 
@@ -110,16 +101,14 @@ inventory/
 ```typescript
 const {
   mainInventory, // Array of inventory items
-  queueItems, // Array of queue items
   loading, // Loading state
   error, // Error message
   initializeInventory, // Initialize with default items
   addInventoryItem, // Add new item to inventory
   updateInventoryQuantity, // Update item quantity
-  moveToQueue, // Move item from main to queue
-  completeQueueItem, // Complete and delete from system
-  returnFromQueue, // Return item to main inventory
   deleteInventoryItem, // Delete item completely
+  checkStock, // Check if item is in stock
+  reserveItemForTask, // Reserve item when creating task
 } = useInventory();
 ```
 
@@ -147,48 +136,31 @@ await addInventoryItem({
 });
 ```
 
-#### `moveToQueue(itemId, quantity, takenBy?)`
+#### `checkStock(itemName)`
 
-Moves item from main inventory to queue.
-
-```typescript
-await moveToQueue("item123", 2, "Flight Attendant #1");
-```
-
-#### `completeQueueItem(queueItemId)`
-
-Completes queue item (deletes from system).
+Checks if an item is in stock.
 
 ```typescript
-await completeQueueItem("queue456");
+const { inStock, quantity, itemId } = await checkStock("Chicken Meal");
 ```
 
-#### `returnFromQueue(queueItemId)`
+#### `reserveItemForTask(itemName, seat, quantity)`
 
-Returns item from queue back to main inventory.
+Reserves item for a task by reducing inventory. Called automatically when tasks are created.
 
 ```typescript
-await returnFromQueue("queue456");
+const reserved = await reserveItemForTask("Chicken Meal", "52B", 1);
 ```
 
-## Integration with Camera Scanner
+## Integration with Task System
 
-The original `InventoryPanel.tsx` includes camera vision capabilities:
+The inventory system is integrated with the task management system:
 
-- Scan items using OpenAI Vision API
-- Automatically detect and classify items
-- Auto-deduct from inventory
-
-The new `InventoryPanelFirebase.tsx` focuses on queue management:
-
-- Manual inventory tracking
-- Queue workflow management
-- Real-time Firebase sync
-
-Both panels are available in the Galley App:
-
-- **Scanner** tab: Camera-based inventory scanning
-- **Queue** tab: Firebase-based queue management
+- When a voice command creates a task (e.g., "Skymate, 52B wants chicken meal")
+- System automatically checks stock availability
+- If in stock, inventory is reserved and deducted immediately
+- Task is created with the allocated item
+- If out of stock, user receives an alert and task is not created
 
 ## Firebase Setup
 
@@ -222,39 +194,37 @@ For production, implement proper authentication and security rules.
 
 ## Workflow Examples
 
-### Example 1: Serving Meals
+### Example 1: Creating a Task with Automatic Inventory Deduction
 
-1. Flight attendant needs 5 vegetarian meals
-2. Select "Vegetarian Meals" in Main Inventory
-3. Set quantity to 5
-4. Click "Move to Queue"
-5. Main Inventory: 12 → 7 meals
-6. Queue: +5 meals (in use)
-7. After service is complete, click "Complete"
-8. Queue: Item removed
-9. Main Inventory: Still 7 meals (consumed)
+1. Flight attendant says: "Skymate, 52B wants chicken meal"
+2. System checks Main Inventory for "Chicken Meal"
+3. If available: Main Inventory: 12 → 11 meals
+4. Task is created for seat 52B with chicken meal
+5. Flight attendant delivers the meal and marks task complete
+6. Main Inventory remains at 11 meals (consumed)
 
-### Example 2: Accidental Queue Entry (Undo)
+### Example 2: Out of Stock Prevention
 
-1. Accidentally moved 10 water bottles to queue
-2. In Queue, click "Return" on the water bottles item
-3. Queue: Item removed
-4. Main Inventory: Quantity restored (+10)
+1. Flight attendant says: "Skymate, 30A wants vegetarian meal"
+2. System checks inventory: Vegetarian meals = 0
+3. System responds: "No stock available"
+4. Task is NOT created
+5. Flight attendant restocks inventory before attempting again
 
 ### Example 3: Low Stock Alert
 
 1. Item quantity drops below threshold
 2. Status indicator turns 🔴 Critical
 3. Restock needed
-4. Use `updateInventoryQuantity()` to add stock
+4. Use inventory management to update quantities manually
 
 ## Best Practices
 
 1. **Regular Monitoring**: Check status indicators regularly
-2. **Complete Queue Items**: Don't let items sit in queue
-3. **Return Mistakes**: Use Return button for accidental moves
+2. **Complete Tasks Promptly**: Mark tasks complete when delivered to keep accurate tracking
+3. **Monitor Stock Levels**: Watch for critical/low stock alerts
 4. **Maintain Thresholds**: Update thresholds based on flight needs
-5. **Restock Promptly**: Address critical/low items immediately
+5. **Restock Promptly**: Address critical/low items immediately before they run out
 
 ## Troubleshooting
 
@@ -279,9 +249,9 @@ For production, implement proper authentication and security rules.
 ## Future Enhancements
 
 - [ ] Barcode scanning integration
-- [ ] Automatic restock notifications
-- [ ] Historical usage analytics
+- [ ] Automatic restock notifications when items reach threshold
+- [ ] Historical usage analytics and consumption patterns
 - [ ] Multi-user role permissions
-- [ ] Batch operations
-- [ ] Export reports
-- [ ] Integration with flight manifest data
+- [ ] Batch operations for inventory updates
+- [ ] Export inventory reports
+- [ ] Predictive stock management based on flight routes and passenger counts

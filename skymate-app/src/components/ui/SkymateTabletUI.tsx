@@ -14,6 +14,10 @@ import {
 	getAllPriorityMembers,
 	type PassengerInfo,
 } from "../../data/passengerData";
+import { AnimatePresence, motion } from "framer-motion";
+import { useInventory } from "../../hooks/useInventory";
+import { useTasks } from "../../hooks/useTasks";
+import type { Task as BackendTask } from "../../types";
 
 type TabId = "gold" | "tasks" | "functions";
 
@@ -44,37 +48,26 @@ function GoldMembersSeatPage() {
 		return { goldSeatSet: gold, diamondSeatSet: diamond };
 	}, [allSeats]);
 
-	// Build a visual 1-2-1 business cabin layout (A–D–G–K style)
+	// Build a visual 2-aisles (2-left, aisle, 2-right) business cabin layout and
+	// generate consistent seat labels starting from row 1 A–D for rows 1–6.
 	const visualRows = useMemo(() => {
-		const BUSINESS_ROWS = 6;
-		const SEATS_PER_ROW = 4;
+		const ROWS = 6;
+		const seatLetters = ["A", "B", "C", "D"];
 
-		// Take the first seats from the database to fill the business cabin section.
-		// This keeps the layout realistic while still being driven by live data.
-		const businessSeats = allSeats.slice(0, BUSINESS_ROWS * SEATS_PER_ROW);
+		const rows: { rowNumber: number; seats: string[] }[] = [];
 
-		const rows: { rowNumber: number; seats: (string | null)[] }[] = [];
-		let index = 0;
-
-		for (let r = 0; r < BUSINESS_ROWS; r++) {
-			const seats: (string | null)[] = [];
-			for (let c = 0; c < SEATS_PER_ROW; c++) {
-				seats.push(businessSeats[index] ?? null);
-				index++;
-			}
-			rows.push({
-				// Simulated business cabin row numbers (16–26 like the reference map)
-				rowNumber: 16 + r * 2,
-				seats,
-			});
+		for (let r = 0; r < ROWS; r++) {
+			const rowNumber = r + 1;
+			const seats = seatLetters.map((letter) => `${rowNumber}${letter}`);
+			rows.push({ rowNumber, seats });
 		}
 
 		return rows;
-	}, [allSeats]);
+	}, []);
 
-	const [selectedSeat, setSelectedSeat] = useState<string | null>("10A");
+	const [selectedSeat, setSelectedSeat] = useState<string | null>("1A");
 	const [selectedInfo, setSelectedInfo] = useState<PassengerInfo | null>(() =>
-		getPassengerInfo("10A")
+		getPassengerInfo("1A")
 	);
 
 	const handleSelectSeat = (seat: string) => {
@@ -116,9 +109,9 @@ function GoldMembersSeatPage() {
 					<div className="pointer-events-none absolute inset-y-6 left-1/2 w-14 -translate-x-1/2 bg-slate-100 border-x border-slate-200/80 rounded-full" />
 
 					<div className="relative h-full flex">
-						{/* Column letters A D G K */}
+						{/* Column letters A B C D */}
 						<div className="pointer-events-none absolute left-10 right-6 top-0 flex justify-between text-[11px] text-slate-500 font-medium px-6">
-							{["A", "D", "G", "K"].map((letter) => (
+							{["A", "B", "C", "D"].map((letter) => (
 								<span key={letter}>{letter}</span>
 							))}
 						</div>
@@ -130,33 +123,24 @@ function GoldMembersSeatPage() {
 							))}
 						</div>
 
-						{/* Seat layout: 1-2-1 with slanted seats */}
+						{/* Seat layout: 1-2-1 style with slanted seats in 4 columns */}
 						<div className="flex-1 pt-4">
 							<div className="grid h-full grid-rows-6 gap-y-4">
-								{visualRows.map((row, rowIndex) => (
+								{visualRows.map((row) => (
 									<div
 										key={row.rowNumber}
 										className="grid grid-cols-4 gap-x-6 items-center"
 									>
 										{row.seats.map((seatId, colIndex) => {
-											if (!seatId) {
-												return (
-													<div
-														key={`${rowIndex}-${colIndex}`}
-														className="h-10 w-14 opacity-20"
-													/>
-												);
-											}
-
 											const isGold = goldSeatSet.has(seatId);
 											const isDiamond = diamondSeatSet.has(seatId);
 											const isSelected = selectedSeat === seatId;
 
 											const rotationByColumn = [
-												"rotate-[20deg]",
-												"-rotate-[20deg]",
-												"rotate-[20deg]",
-												"-rotate-[20deg]",
+												"rotate-[18deg]",
+												"-rotate-[18deg]",
+												"rotate-[18deg]",
+												"-rotate-[18deg]",
 											] as const;
 
 											const alignByColumn = [
@@ -311,133 +295,83 @@ function GoldMembersSeatPage() {
 	);
 }
 
-interface DemoInventoryItem {
-	id: string;
-	name: string;
-	unit: string;
-	quantity: number;
-	capacity: number;
-	warningThreshold: number;
-	icon: string;
-}
-
-interface DemoTask {
-	id: string;
-	label: string;
-	seat: string;
-	item: string;
-	special?: string;
-	bucket: "cathay" | "priority" | "normal";
-	done: boolean;
-}
-
 function TaskQueueInventoryPage() {
-	const [inventory] = useState<DemoInventoryItem[]>([
-		{
-			id: "chicken",
-			name: "Chicken meal",
-			unit: "trays",
-			quantity: 28,
-			capacity: 40,
-			warningThreshold: 16,
-			icon: "🍗",
-		},
-		{
-			id: "beef",
-			name: "Beef meal",
-			unit: "trays",
-			quantity: 22,
-			capacity: 40,
-			warningThreshold: 12,
-			icon: "🥩",
-		},
-		{
-			id: "earphones",
-			name: "Earphones",
-			unit: "sets",
-			quantity: 45,
-			capacity: 60,
-			warningThreshold: 20,
-			icon: "🎧",
-		},
-		{
-			id: "ramen",
-			name: "Cup ramen",
-			unit: "cups",
-			quantity: 15,
-			capacity: 20,
-			warningThreshold: 8,
-			icon: "🍜",
-		},
-		{
-			id: "water",
-			name: "Water bottle",
-			unit: "bottles",
-			quantity: 52,
-			capacity: 80,
-			warningThreshold: 24,
-			icon: "💧",
-		},
-	]);
+	const {
+		mainInventory,
+		loading: inventoryLoading,
+		error: inventoryError,
+	} = useInventory();
+	const {
+		tasks,
+		loading: tasksLoading,
+		error: tasksError,
+		completeTask,
+	} = useTasks();
 
-	const [tasks, setTasks] = useState<DemoTask[]>([
-		{
-			id: "t1",
-			label: "Deliver chicken meal",
-			seat: "52B",
-			item: "Chicken meal",
-			special: "Gold member",
-			bucket: "cathay",
-			done: false,
-		},
-		{
-			id: "t2",
-			label: "Refill water",
-			seat: "20A",
-			item: "Water bottle",
-			bucket: "priority",
-			done: false,
-		},
-		{
-			id: "t3",
-			label: "Provide earphones",
-			seat: "21F",
-			item: "Earphones",
-			bucket: "normal",
-			done: false,
-		},
-		{
-			id: "t4",
-			label: "Prepare cup ramen",
-			seat: "28C",
-			item: "Cup ramen",
-			bucket: "normal",
-			done: true,
-		},
-		{
-			id: "t5",
-			label: "Serve champagne",
-			seat: "1A",
-			item: "Champagne service",
-			special: "Diamond member",
-			bucket: "priority",
-			done: false,
-		},
-		{
-			id: "t6",
-			label: "Priority assistance",
-			seat: "2B",
-			item: "Meet passenger at door",
-			special: "Diamond class",
-			bucket: "cathay",
-			done: false,
-		},
-	]);
+	const activeTasks = tasks.filter(
+		(t) => t.status === "pending" || t.status === "in_progress"
+	);
+	const completedTasks = tasks.filter((t) => t.status === "completed");
 
-	const toggleTaskDone = (id: string) => {
-		setTasks((prev) =>
-			prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
-		);
+	const getTaskBucket = (
+		task: BackendTask
+	): "cathay" | "priority" | "normal" => {
+		const info = getPassengerInfo(task.seat);
+		const isPriorityGuest =
+			!!info &&
+			(info.membershipTier === "diamond" ||
+				info.membershipTier === "gold" ||
+				info.priorityMember);
+
+		if (isPriorityGuest) return "cathay";
+		if (task.priority === "urgent" || task.priority === "high")
+			return "priority";
+		return "normal";
+	};
+
+	const getInventoryIcon = (name: string) => {
+		const n = name.toLowerCase();
+		// Prioritise specific matches before generic 'meal'
+		if (n.includes("beef")) return "🥩";
+		if (n.includes("chicken")) return "🍗";
+		if (n.includes("ramen") || n.includes("cup")) return "🍜";
+		if (n.includes("coffee")) return "☕";
+		if (n.includes("tea")) return "🍵";
+		if (n.includes("water") || n.includes("bottle")) return "💧";
+		if (
+			n.includes("headphone") ||
+			n.includes("earphone") ||
+			n.includes("earphones")
+		)
+			return "🎧";
+		if (n.includes("pillow") || n.includes("blanket")) return "🛏️";
+		if (n.includes("drink") || n.includes("soft")) return "🥤";
+		// generic meal fallback (if nothing else matched)
+		if (n.includes("meal")) return "🍽️";
+		// fallback
+		return "📦";
+	};
+
+	const formatTaskLabel = (raw?: string | null) => {
+		if (!raw) return "";
+		// Split by comma to handle multiple items like "water, chicken"
+		const parts = raw
+			.split(",")
+			.map((p) => p.trim())
+			.filter(Boolean);
+
+		const mapped = parts.map((part) => {
+			const lower = part.toLowerCase();
+			if (lower.includes("chicken")) return "Chicken meal";
+			if (lower.includes("beef")) return "Beef meal";
+			// Title-case other phrases
+			return part
+				.split(/\s+/)
+				.map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+				.join(" ");
+		});
+
+		return mapped.join(", ");
 	};
 
 	return (
@@ -456,12 +390,31 @@ function TaskQueueInventoryPage() {
 				</div>
 
 				<div className="space-y-1">
-					{inventory.map((item) => {
-						const isLow = item.quantity <= item.warningThreshold;
+					{inventoryLoading && (
+						<p className="text-[11px] text-emerald-700/80">
+							Loading galley inventory...
+						</p>
+					)}
+					{inventoryError && (
+						<p className="text-[11px] text-red-600">
+							Inventory error: {inventoryError}
+						</p>
+					)}
+					{!inventoryLoading &&
+						!inventoryError &&
+						mainInventory.length === 0 && (
+							<p className="text-[11px] text-emerald-700/60 italic">
+								No inventory items yet.
+							</p>
+						)}
+					{mainInventory.slice(0, 8).map((item) => {
+						const isLow = item.quantity <= item.threshold;
+						const capacity = Math.max(item.quantity, item.threshold * 3);
 						const percent = Math.min(
 							100,
-							Math.round((item.quantity / item.capacity) * 100)
+							Math.round((item.quantity / capacity) * 100)
 						);
+
 						return (
 							<div
 								key={item.id}
@@ -469,10 +422,10 @@ function TaskQueueInventoryPage() {
 							>
 								<div className="flex items-center gap-3">
 									<div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-lg">
-										<span>{item.icon}</span>
+										<span>{getInventoryIcon(item.name)}</span>
 									</div>
 									<div>
-										<p className="text-sm font-semibold text-emerald-950">
+										<p className="text-xs font-semibold text-emerald-950 mr-2">
 											{item.name}
 										</p>
 										<p className="text-[11px] text-emerald-800/80">
@@ -492,7 +445,7 @@ function TaskQueueInventoryPage() {
 											{isLow ? "Watch" : "Good"}
 										</div>
 										<div className="text-[11px]">
-											{item.quantity} / {item.capacity}
+											{item.quantity} / {capacity}
 										</div>
 									</div>
 								</div>
@@ -514,8 +467,7 @@ function TaskQueueInventoryPage() {
 						</div>
 					</div>
 					<span className="text-xs text-emerald-700/90">
-						{tasks.filter((t) => !t.done).length} active ·{" "}
-						{tasks.filter((t) => t.done).length} done
+						{activeTasks.length} active · {completedTasks.length} done
 					</span>
 				</div>
 
@@ -523,8 +475,13 @@ function TaskQueueInventoryPage() {
 					<div className="grid grid-cols-1 md:grid-cols-3 h-full md:divide-x md:divide-emerald-200/60">
 						{["cathay", "priority", "normal"].map((column) => {
 							const columnTasks = tasks
-								.filter((t) => t.bucket === column)
-								.sort((a, b) => Number(a.done) - Number(b.done));
+								.filter((t) => getTaskBucket(t as BackendTask) === column)
+								.sort((a, b) => {
+									const aDone = a.status === "completed";
+									const bDone = b.status === "completed";
+									if (aDone !== bDone) return Number(aDone) - Number(bDone);
+									return a.timestamp - b.timestamp;
+								});
 							const titleMap: Record<string, string> = {
 								cathay: "Priority Guest",
 								priority: "Urgent",
@@ -541,67 +498,116 @@ function TaskQueueInventoryPage() {
 										</span>
 									</div>
 									<div className="flex-1 overflow-y-auto pr-1">
-										{columnTasks.map((task) => {
-											const isGoldTask = (task.special ?? "")
-												.toLowerCase()
-												.includes("gold");
-											const isDiamondTask = (task.special ?? "")
-												.toLowerCase()
-												.includes("diamond");
-											return (
-												<div
-													key={task.id}
-													className={[
-														"w-full px-2 py-2 flex items-center gap-2.5 text-sm",
-														isDiamondTask
-															? "bg-indigo-100/95 border-l-4 border-indigo-500/90 shadow-md"
-															: isGoldTask
-															? "bg-amber-100/95 border-l-4 border-amber-400/90 shadow-sm"
-															: "",
-														task.done ? "opacity-60" : "opacity-100",
-													].join(" ")}
-												>
-													<button
-														type="button"
-														onClick={() => toggleTaskDone(task.id)}
-														className="mt-0.5 w-5 h-5 rounded-full border border-emerald-300 flex items-center justify-center bg-white hover:bg-emerald-50 shadow-sm"
-													>
-														{task.done && (
-															<span className="text-[11px] text-emerald-700">
-																✓
-															</span>
-														)}
-													</button>
-													<div className="flex items-center gap-2.5 flex-1">
-														<div
-															className={[
-																"flex items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-sm",
-																isDiamondTask
-																	? "w-9 h-9 bg-gradient-to-br from-indigo-600 to-purple-500 text-sm"
-																	: "w-8 h-8",
-																isDiamondTask
-																	? ""
-																	: isGoldTask
-																	? "bg-amber-500"
-																	: "bg-emerald-600",
-															].join(" ")}
+										{tasksLoading && column === "cathay" && (
+											<p className="text-[11px] text-emerald-700/80">
+												Loading tasks...
+											</p>
+										)}
+										{tasksError && column === "cathay" && (
+											<p className="text-[11px] text-red-600">
+												Task error: {tasksError}
+											</p>
+										)}
+										<motion.div layout>
+											<AnimatePresence initial={false}>
+												{columnTasks.map((task) => {
+													const passengerInfo = getPassengerInfo(task.seat);
+													const isDiamondTask =
+														passengerInfo?.membershipTier === "diamond";
+													const isGoldTask =
+														(!isDiamondTask &&
+															passengerInfo?.membershipTier === "gold") ||
+														passengerInfo?.priorityMember === true;
+													const isDone = task.status === "completed";
+													return (
+														<motion.div
+															key={task.id}
+															layout
+															style={{ overflow: "hidden" }}
+															initial={{ opacity: 0, y: 12, scale: 0.98 }}
+															animate={{ opacity: 1, y: 0, scale: 1 }}
+															exit={{
+																opacity: 0,
+																y: -8,
+																height: 0,
+																marginTop: 0,
+																marginBottom: 0,
+																paddingTop: 0,
+																paddingBottom: 0,
+															}}
+															transition={{ duration: 0.25, ease: "easeOut" }}
 														>
-															{task.seat}
-														</div>
-														<p
-															className={[
-																"text-[15px] font-semibold text-emerald-950",
-																task.done
-																	? "line-through text-emerald-500"
-																	: "",
-															].join(" ")}
-														>
-															{task.item}
-														</p>
-													</div>
-												</div>
-											);
-										})}
+															<div
+																className={[
+																	"w-full px-2 py-2 flex items-center gap-2.5 text-sm",
+																	isDiamondTask
+																		? "bg-indigo-100/95 border-l-4 border-indigo-500/90 shadow-md"
+																		: isGoldTask
+																		? "bg-amber-100/95 border-l-4 border-amber-400/90 shadow-sm"
+																		: "",
+																	isDone ? "opacity-60" : "opacity-100",
+																].join(" ")}
+															>
+																<button
+																	type="button"
+																	onClick={() => completeTask(task.id)}
+																	className="mt-0.5 w-5 h-5 rounded-full border border-emerald-300 flex items-center justify-center bg-white hover:bg-emerald-50 shadow-sm"
+																>
+																	{isDone && (
+																		<span className="text-[11px] text-emerald-700">
+																			✓
+																		</span>
+																	)}
+																</button>
+																<div className="flex items-start gap-2.5 flex-1">
+																	<div
+																		className={[
+																			"flex items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-sm shrink-0 overflow-hidden leading-none text-center",
+																			isDiamondTask
+																				? "w-9 h-9 bg-gradient-to-br from-indigo-600 to-purple-500 text-sm"
+																				: "w-8 h-8",
+																			isDiamondTask
+																				? ""
+																				: isGoldTask
+																				? "bg-amber-500"
+																				: "bg-emerald-600",
+																		].join(" ")}
+																	>
+																		{task.seat}
+																	</div>
+																	<div className="flex flex-col">
+																		<p
+																			className={[
+																				"text-sm font-semibold text-emerald-950",
+																				isDone
+																					? "line-through text-emerald-500"
+																					: "",
+																			].join(" ")}
+																		>
+																			{formatTaskLabel(
+																				task.item || task.request
+																			)}
+																		</p>
+																		{isDiamondTask && (
+																			<span className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-300 text-[10px] text-sky-900">
+																				<Crown className="w-3 h-3 text-sky-600" />
+																				Diamond priority guest
+																			</span>
+																		)}
+																		{!isDiamondTask && isGoldTask && (
+																			<span className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-[10px] text-amber-900">
+																				<Crown className="w-3 h-3 text-amber-500" />
+																				Gold priority guest
+																			</span>
+																		)}
+																	</div>
+																</div>
+															</div>
+														</motion.div>
+													);
+												})}
+											</AnimatePresence>
+										</motion.div>
 										{columnTasks.length === 0 && (
 											<p className="text-[11px] text-emerald-700/60 italic">
 												No tasks here yet.
@@ -808,7 +814,7 @@ function SkymateTabletUI() {
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-emerald-50 via-slate-50 to-emerald-100 text-emerald-950">
-			<div className="max-w-5xl mx-auto h-screen flex flex-col">
+			<div className="max-w-5xl mx-auto min-h-screen flex flex-col">
 				{/* Header */}
 				<header className="pt-6 pb-3 px-4 md:px-6 border-b border-emerald-200">
 					<div className="flex items-start justify-between gap-4">
@@ -833,7 +839,7 @@ function SkymateTabletUI() {
 				</header>
 
 				{/* Content */}
-				<main className="flex-1 px-4 md:px-6 py-4 pb-24 overflow-y-auto">
+				<main className="flex-1 px-4 md:px-6 py-4 pb-24">
 					{activeTab === "gold" && <GoldMembersSeatPage />}
 					{activeTab === "tasks" && <TaskQueueInventoryPage />}
 					{activeTab === "functions" && <AssistantFunctionsPage />}

@@ -1,79 +1,85 @@
-import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import VoiceInput from "../crew/VoiceInput";
 
 /**
  * Clean voice assistant interface for tablet UI
  * Wraps VoiceInput and hides unnecessary dev/testing elements
  */
+const columnBackgrounds: Record<string, string> = {
+	orders: "md:bg-gradient-to-b md:from-emerald-50/60 md:via-white md:to-white",
+	reminder:
+		"md:bg-gradient-to-b md:from-emerald-50/60 md:via-white md:to-white",
+	information:
+		"md:bg-gradient-to-b md:from-emerald-50/60 md:via-white md:to-white",
+};
+
+const voicePlaybook = [
+	{
+		id: "orders",
+		label: "Orders",
+		items: [
+			{
+				title: "Create order from a seat",
+				phrase: "Skymate, 1A requests chicken meal",
+				tag: "Task creation",
+			},
+			{
+				title: "Cancel a passenger's open order",
+				phrase: "Skymate, cancel 1A",
+				tag: "Cancellations",
+			},
+		],
+	},
+	{
+		id: "reminder",
+		label: "Reminder",
+		items: [
+			{
+				title: "Set a reminder for a seat",
+				phrase: "Skymate, remind me 1A",
+				tag: "Reminders",
+			},
+			{
+				title: "Summarise the next few tasks",
+				phrase: "Skymate, remind me task 1 to 4",
+				tag: "Summaries",
+			},
+		],
+	},
+	{
+		id: "information",
+		label: "Information",
+		items: [
+			{
+				title: "Check remaining stock",
+				phrase: "Skymate, how many order of chicken left",
+				tag: "Inventory",
+			},
+			{
+				title: "Surface special-care passengers",
+				phrase: "Skymate, tell me special tasks",
+				tag: "Priority care",
+			},
+			{
+				title: "Explain meal ingredients",
+				phrase: "Skymate, describe ingredients of chicken meal",
+				tag: "Meal info",
+			},
+			{
+				title: "Know your cabin at a glance",
+				phrase: "Skymate has database of customers in flight",
+				tag: "Passenger data",
+			},
+		],
+	},
+];
+
 function VoiceAssistantTab() {
-  return (
-    <div className="h-full flex flex-col gap-6">
-      {/* Info card matching the tablet UI theme */}
-      <div className="bg-white border border-emerald-200 rounded-3xl p-6 shadow-lg shadow-emerald-100/60">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-md">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" x2="12" y1="19" y2="22" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-emerald-600/90">
-              Voice Control
-            </p>
-            <h2 className="text-xl font-semibold text-emerald-950">
-              Say "Skymate" to activate
-            </h2>
-          </div>
-        </div>
-
-        <div className="space-y-3 text-sm text-emerald-900/80">
-          <p className="leading-relaxed">
-            The assistant is always listening for the wake word{" "}
-            <span className="font-semibold text-emerald-950">"Skymate"</span>.
-            Once activated, speak your request naturally.
-          </p>
-
-          <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4">
-            <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide mb-2">
-              Example commands
-            </p>
-            <ul className="space-y-2 text-xs text-emerald-900/90">
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-600 mt-0.5">•</span>
-                <span>"Skymate, 52B requests chicken meal"</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-600 mt-0.5">•</span>
-                <span>"Skymate, remind me of task 1 to 4"</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-600 mt-0.5">•</span>
-                <span>"Skymate, check off 10A"</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-600 mt-0.5">•</span>
-                <span>"Skymate, tell me special tasks"</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      {/* Voice Input Component - hide UI elements with CSS */}
-      <div className="voice-input-wrapper">
-        <style>{`
+	return (
+		<div className="h-full flex flex-col gap-6">
+			{/* Voice Input Component - hide UI elements with CSS */}
+			<div className="voice-input-wrapper">
+				<style>{`
           .voice-input-wrapper button:has(svg[class*="Headphones"]) {
             display: none !important;
           }
@@ -131,10 +137,61 @@ function VoiceAssistantTab() {
             color: #064e3b !important;
           }
         `}</style>
-        <VoiceInput />
-      </div>
-    </div>
-  );
+				<VoiceInput />
+			</div>
+
+			<section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-0 md:rounded-[32px] md:border md:border-emerald-100 md:bg-emerald-50/40 shadow-sm shadow-emerald-100">
+				{voicePlaybook.map((column, idx) => (
+					<div
+						key={column.id}
+						className={[
+							"flex flex-col p-4 md:px-8 md:py-6 transition-colors",
+							columnBackgrounds[column.id] || "",
+							idx !== 0
+								? "md:border-l-[2px] md:border-emerald-200/80 md:pl-8 md:pr-6"
+								: "md:pl-6 md:pr-6",
+						].join(" ")}
+					>
+						<div className="flex items-center justify-between mb-2">
+							<p className="text-xs font-semibold tracking-[0.2em] text-emerald-700 uppercase">
+								{column.label}
+							</p>
+							<span className="text-xs text-emerald-700/80">
+								{column.items.length}
+							</span>
+						</div>
+						<div className="flex flex-col gap-4">
+							{column.items.map((item) => (
+								<div
+									key={item.title}
+									className="rounded-3xl border border-emerald-100 bg-white shadow-sm px-4 py-4 flex items-start gap-3"
+								>
+									<Sparkles className="text-emerald-600 mt-1" size={18} />
+									<div className="flex-1 space-y-2 text-left">
+										<div className="flex items-start justify-between gap-3 flex-wrap">
+											<div className="space-y-2">
+												<p className="text-base md:text-lg font-semibold text-emerald-900 leading-snug">
+													{item.phrase.trim()}
+												</p>
+												<div className="md:hidden h-px bg-emerald-100" />
+												<p className="text-sm text-emerald-700/90">
+													{item.title.charAt(0).toUpperCase() +
+														item.title.slice(1).toLowerCase()}
+												</p>
+											</div>
+											<span className="uppercase text-[10px] tracking-[0.25em] text-emerald-600/80">
+												{item.tag}
+											</span>
+										</div>
+									</div>
+								</div>
+							))}
+						</div>
+					</div>
+				))}
+			</section>
+		</div>
+	);
 }
 
 export default VoiceAssistantTab;

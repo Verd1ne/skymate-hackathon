@@ -14,7 +14,6 @@ import { config } from "../../lib/config";
 import { TTSService } from "../../lib/ttsService";
 import { generateTaskScript } from "../../lib/taskScriptGenerator";
 import { useToast } from "../shared/ToastContainer";
-import { MicrophoneTest } from "./MicrophoneTest";
 import { initializeFlightTasks } from "../../lib/flightInitialization";
 import { useEarbudTapListener } from "../../hooks/useEarbudTapListener";
 
@@ -24,7 +23,6 @@ function VoiceInput() {
   const [transcript, setTranscript] = useState("");
   const [isParsing, setIsParsing] = useState(false);
   const [parsedIntent, setParsedIntent] = useState<ParsedIntent | null>(null);
-  const [showMicTest, setShowMicTest] = useState(false);
   const [isFlightStarted, setIsFlightStarted] = useState(false);
   const [isInitializingFlight, setIsInitializingFlight] = useState(false);
 
@@ -39,6 +37,7 @@ function VoiceInput() {
   const hasAutoCreatedRef = useRef<boolean>(false); // Track if we've auto-created for this parsedIntent
   const timeoutsRef = useRef<Set<NodeJS.Timeout>>(new Set()); // Track all timeouts for cleanup
   const isProcessingSessionRef = useRef<boolean>(false); // Prevent concurrent wake word sessions
+  const sessionTypeRef = useRef<"wake_word" | "earbud_tap" | null>(null); // Track session type to prevent mixing
   const lastWakeWordTimeRef = useRef<number>(0); // Debounce wake word detection
   const lastTranscriptRef = useRef<string>(""); // Track last transcript for smart debouncing
   const silentAudioRef = useRef<HTMLAudioElement | null>(null); // Silent audio for Media Session API
@@ -173,60 +172,35 @@ function VoiceInput() {
       text: string,
       selectedAlternative?: any
     ) => {
-      // SESSION GUARD: Prevent concurrent sessions from starting
+      // STRICT SESSION GUARD: Block ALL new sessions if one is active
+      if (isProcessingSessionRef.current) {
+        console.log(
+          `⛔ SESSION BLOCKED: A ${sessionTypeRef.current} session is already active, ignoring wake word`
+        );
+        return;
+      }
+
       const now = Date.now();
       const timeSinceLastWakeWord = now - lastWakeWordTimeRef.current;
       const trimmedText = text.trim();
 
-      // SMART DEBOUNCE: Only ignore if it's the EXACT same text within 500ms
-      // This allows "skymate 13B" → "skymate 13B water" progression
-      // But blocks true duplicates like "skymate 13B water" → "skymate 13B water"
+      // DEBOUNCE: Prevent rapid duplicate detections within 500ms
       const isExactDuplicate = trimmedText === lastTranscriptRef.current;
       const isTooQuick = timeSinceLastWakeWord < 500;
 
       if (isExactDuplicate && isTooQuick) {
         console.log(
-          `⏸️ Ignoring exact duplicate wake word (${timeSinceLastWakeWord}ms since last, same text: "${trimmedText}")`
+          `⏸️ Ignoring duplicate wake word (${timeSinceLastWakeWord}ms since last)`
         );
         return;
       }
 
-      // If text is different or enough time has passed, it's a new/updated request
-      if (!isExactDuplicate) {
-        console.log(
-          `✅ New/updated request detected (previous: "${lastTranscriptRef.current}", new: "${trimmedText}")`
-        );
-      }
-
-      // SESSION LOCK: If already processing a session, check if this is an update
-      if (isProcessingSessionRef.current) {
-        // Allow updates to the same session if text is longer (continuation)
-        const isLongerText =
-          trimmedText.length > lastTranscriptRef.current.length;
-        const containsPrevious = trimmedText.includes(
-          lastTranscriptRef.current
-        );
-
-        if (isLongerText && containsPrevious) {
-          console.log(
-            `🔄 Allowing session update (continuation): "${lastTranscriptRef.current}" → "${trimmedText}"`
-          );
-          // Update the last transcript but continue with existing session
-          lastTranscriptRef.current = trimmedText;
-          // Don't return - process the updated request
-        } else {
-          console.log(
-            `⏸️ Session already in progress with different text, ignoring: "${trimmedText}"`
-          );
-          return;
-        }
-      }
-
-      // Mark session as active
+      // LOCK SESSION: Mark as active immediately to prevent race conditions
       isProcessingSessionRef.current = true;
+      sessionTypeRef.current = "wake_word";
       lastWakeWordTimeRef.current = now;
       lastTranscriptRef.current = trimmedText;
-      console.log(`🔒 Session started at ${now} with text: "${trimmedText}"`);
+      console.log(`🔒 WAKE WORD SESSION LOCKED: "${trimmedText}"`);
 
       // OPTIMIZATION: Handle low-confidence signal (empty transcript OR keepWakeWordActive flag)
       // When voice.ts passes an empty transcript or keepWakeWordActive flag, it means recognition failed quality checks
@@ -272,7 +246,7 @@ function VoiceInput() {
         setIsMicReady(false);
         hasAutoCreatedRef.current = false;
 
-        // UNLOCK SESSION: Allow new wake words
+        // UNLOCK SESSION: Allow new sessions
         isProcessingSessionRef.current = false;
         console.log(`🔓 Session unlocked (low confidence)`);
 
@@ -306,6 +280,7 @@ function VoiceInput() {
         console.log("⏸️ Wake word only detected, waiting for request...", text);
         // UNLOCK SESSION: Allow new wake words since this was incomplete
         isProcessingSessionRef.current = false;
+        sessionTypeRef.current = null;
         console.log(`🔓 Session unlocked (wake word only)`);
         // Don't process - just wait for the actual request
         // The timeout will handle resetting if no speech comes
@@ -391,6 +366,7 @@ function VoiceInput() {
 
           // UNLOCK SESSION: Command complete (invalid)
           isProcessingSessionRef.current = false;
+          sessionTypeRef.current = null;
           console.log(`🔓 Session unlocked (invalid cancel command)`);
 
           if (voiceServiceRef.current && wakeWordCallbackRef.current) {
@@ -510,6 +486,7 @@ function VoiceInput() {
 
           // UNLOCK SESSION: Command complete
           isProcessingSessionRef.current = false;
+          sessionTypeRef.current = null;
           console.log(`🔓 Session unlocked (cancel complete)`);
 
           // Restart continuous listening
@@ -563,6 +540,7 @@ function VoiceInput() {
 
           // UNLOCK SESSION: Command complete (invalid)
           isProcessingSessionRef.current = false;
+          sessionTypeRef.current = null;
           console.log(`🔓 Session unlocked (invalid check command)`);
 
           if (voiceServiceRef.current && wakeWordCallbackRef.current) {
@@ -681,6 +659,7 @@ function VoiceInput() {
 
           // UNLOCK SESSION: Command complete
           isProcessingSessionRef.current = false;
+          sessionTypeRef.current = null;
           console.log(`🔓 Session unlocked (check complete)`);
 
           // Restart continuous listening
@@ -821,6 +800,20 @@ function VoiceInput() {
         pattern: "priority members pattern",
       });
 
+      // NEW: Check for team introduction command (e.g., "introduce our team", "introduce the team", "introduce yourself")
+      const teamIntroPattern =
+        /\b(introduce|show|tell|display|present)(?:\s+me)?(?:\s+(?:our|the|yourself))?\s*(?:team)?\b/i;
+      const teamIntroMatch =
+        normalizedText.match(teamIntroPattern) &&
+        (normalizedText.includes("team") ||
+          normalizedText.includes("yourself"));
+
+      console.log(`🔍 Team introduction pattern test:`, {
+        text: normalizedText,
+        match: teamIntroMatch ? "MATCH" : "NO MATCH",
+        pattern: "team introduction pattern",
+      });
+
       // Handle seat information requests
       if (validSeatInfo) {
         console.log("🪑 Seat information request detected:", {
@@ -831,9 +824,7 @@ function VoiceInput() {
         const seatNumberUpper = seatNumber!.toUpperCase().trim();
 
         // Import passenger data
-        const { getPassengerInfo, formatBasicPassengerInfo } = await import(
-          "../../data/passengerData"
-        );
+        const { getPassengerInfo } = await import("../../data/passengerData");
 
         const passengerInfo = getPassengerInfo(seatNumberUpper);
 
@@ -886,8 +877,16 @@ function VoiceInput() {
                   description += ` They have ${restrictions} dietary restrictions.`;
                 }
               } else {
-                // If no pending tasks, provide basic passenger info without meal preference
-                description = formatBasicPassengerInfo(passengerInfo);
+                // If no pending tasks, provide basic passenger info
+                description = `Seat ${seatNumberUpper}, ${passengerInfo.passengerName}`;
+                if (
+                  passengerInfo.dietaryRestrictions &&
+                  passengerInfo.dietaryRestrictions.length > 0
+                ) {
+                  const restrictions =
+                    passengerInfo.dietaryRestrictions.join(" and ");
+                  description += ` with ${restrictions} dietary restrictions`;
+                }
               }
 
               console.log(`🔊 Speaking passenger information: ${description}`);
@@ -915,6 +914,7 @@ function VoiceInput() {
 
           // UNLOCK SESSION: Command complete
           isProcessingSessionRef.current = false;
+          sessionTypeRef.current = null;
           console.log(`🔓 Session unlocked (passenger info found)`);
 
           // Restart continuous listening
@@ -1092,6 +1092,108 @@ function VoiceInput() {
         }
 
         return; // Exit early for priority members list command
+      }
+
+      // Handle team introduction command
+      if (teamIntroMatch) {
+        console.log("👥 Team introduction command detected:", {
+          command: normalizedText,
+        });
+
+        const teamIntroText =
+          "Sorry, I couldnt catch that. JUST KIDDING, Hello Judges, I'm the sixth member, skymate! We are C O B";
+
+        console.log(`✅ Team introduction: ${teamIntroText}`);
+
+        // Play TTS with team introduction
+        if (ttsServiceRef.current) {
+          try {
+            console.log(`🔊 Speaking team introduction: ${teamIntroText}`);
+
+            await ttsServiceRef.current.speak(teamIntroText, {
+              rate: 1.0,
+              onEnd: () => {
+                console.log("✅ Team introduction spoken successfully");
+
+                // Reset state and restart listening AFTER TTS completes
+                setTranscript("");
+                setParsedIntent(null);
+                setIsListening(false);
+                setIsMicReady(false);
+                hasAutoCreatedRef.current = false;
+
+                // UNLOCK SESSION: Command complete
+                isProcessingSessionRef.current = false;
+                console.log(`🔓 Session unlocked (team introduction)`);
+
+                // Restart continuous listening
+                if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                  createTimeout(() => {
+                    if (
+                      voiceServiceRef.current &&
+                      wakeWordCallbackRef.current
+                    ) {
+                      voiceServiceRef.current.ensureContinuousListening(
+                        wakeWordCallbackRef.current,
+                        wakeWordOnlyCallbackRef.current || undefined
+                      );
+                    }
+                  }, 100);
+                }
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error for team introduction:", error);
+
+                // Reset state even on error
+                setTranscript("");
+                setParsedIntent(null);
+                setIsListening(false);
+                setIsMicReady(false);
+                hasAutoCreatedRef.current = false;
+                isProcessingSessionRef.current = false;
+
+                // Restart listening even on error
+                if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                  createTimeout(() => {
+                    if (
+                      voiceServiceRef.current &&
+                      wakeWordCallbackRef.current
+                    ) {
+                      voiceServiceRef.current.ensureContinuousListening(
+                        wakeWordCallbackRef.current,
+                        wakeWordOnlyCallbackRef.current || undefined
+                      );
+                    }
+                  }, 100);
+                }
+              },
+            });
+          } catch (error) {
+            console.error("❌ Error playing team introduction:", error);
+
+            // Reset state on exception
+            setTranscript("");
+            setParsedIntent(null);
+            setIsListening(false);
+            setIsMicReady(false);
+            hasAutoCreatedRef.current = false;
+            isProcessingSessionRef.current = false;
+
+            // Restart listening
+            if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+              createTimeout(() => {
+                if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                  voiceServiceRef.current.ensureContinuousListening(
+                    wakeWordCallbackRef.current,
+                    wakeWordOnlyCallbackRef.current || undefined
+                  );
+                }
+              }, 100);
+            }
+          }
+        }
+
+        return; // Exit early for team introduction command
       }
 
       // Handle meal description requests
@@ -1423,6 +1525,7 @@ function VoiceInput() {
 
           // UNLOCK SESSION: Command complete
           isProcessingSessionRef.current = false;
+          sessionTypeRef.current = null;
           console.log(`🔓 Session unlocked (no tasks - general)`);
 
           // Azure Speech Service will auto-restart via its internal mechanism
@@ -1504,6 +1607,7 @@ function VoiceInput() {
 
             // UNLOCK SESSION: Not a valid command
             isProcessingSessionRef.current = false;
+            sessionTypeRef.current = null;
             console.log(`🔓 Session unlocked (invalid wake word)`);
             return;
           } else {
@@ -1577,23 +1681,43 @@ function VoiceInput() {
           setParsedIntent(intent);
           setIsParsing(false);
         })
-        .catch((error: any) => {
-          console.error("Parsing failed:", error);
-          const errorMessage =
-            error?.message ||
-            "Failed to process your request. Please try again.";
-          showWarning("Parsing Error", errorMessage);
-          setParsedIntent({
-            seat: "unknown",
-            type: "assistance",
-            priority: "normal",
-            suggestedResponse: "Please review and create task manually.",
-          });
+        .catch(async (error: any) => {
+          console.error("❌ Parsing failed:", error);
+
+          // Play TTS feedback for all errors: "couldn't hear that"
+          if (ttsServiceRef.current) {
+            try {
+              await ttsServiceRef.current.speak(
+                "Couldn't hear that, please repeat",
+                { rate: 1.0 }
+              );
+            } catch (ttsError) {
+              console.warn("⚠️ TTS failed:", ttsError);
+            }
+          }
+
+          // Reset state - don't set parsedIntent for errors
+          setParsedIntent(null);
           setIsParsing(false);
+          setIsListening(false);
+          setIsMicReady(false);
 
           // UNLOCK SESSION: Parsing failed
           isProcessingSessionRef.current = false;
+          sessionTypeRef.current = null;
           console.log(`🔓 Session unlocked (parsing error)`);
+
+          // Restart continuous listening
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
         });
     };
 
@@ -1818,7 +1942,15 @@ function VoiceInput() {
   // This leverages the proven Azure Speech wake-word detection for 100% reliability
   // CRITICAL FIX: Use useCallback to create stable reference that's available from first render
   const handleEarbudTap = useCallback(async () => {
-    console.log("🎧 Earbud tap detected - activating virtual wake word");
+    console.log("🎧 Earbud tap detected - checking session lock...");
+
+    // STRICT SESSION GUARD: Block if any session is already active
+    if (isProcessingSessionRef.current) {
+      console.log(
+        `⛔ EARBUD TAP BLOCKED: A ${sessionTypeRef.current} session is already active`
+      );
+      return;
+    }
 
     if (!voiceServiceRef.current) {
       console.error("❌ VoiceService not available");
@@ -1959,6 +2091,7 @@ function VoiceInput() {
 
       // UNLOCK SESSION: No valid item detected
       isProcessingSessionRef.current = false;
+      sessionTypeRef.current = null;
       console.log(`🔓 Session unlocked (no valid item)`);
 
       // Restart continuous listening
@@ -2386,6 +2519,7 @@ function VoiceInput() {
 
       // UNLOCK SESSION: Task created successfully
       isProcessingSessionRef.current = false;
+      sessionTypeRef.current = null;
       console.log(`🔓 Session unlocked (task created)`);
 
       // Azure Speech Service will auto-restart via its internal mechanism
@@ -2406,6 +2540,7 @@ function VoiceInput() {
 
       // UNLOCK SESSION: Task creation failed
       isProcessingSessionRef.current = false;
+      sessionTypeRef.current = null;
       console.log(`🔓 Session unlocked (task creation error)`);
 
       // Azure Speech Service will auto-restart via its internal mechanism
@@ -2452,26 +2587,6 @@ function VoiceInput() {
           </p>
         )}
       </div>
-
-      {/* Microphone Test Toggle - Development Only */}
-      {import.meta.env.DEV && (
-        <div className="w-full max-w-2xl">
-          <button
-            onClick={() => setShowMicTest(!showMicTest)}
-            className="mb-4 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition-colors"
-          >
-            {showMicTest ? "Hide" : "Show"} Microphone Test
-          </button>
-
-          {showMicTest && (
-            <MicrophoneTest
-              onTestComplete={(passed) => {
-                console.log("Microphone test completed:", passed);
-              }}
-            />
-          )}
-        </div>
-      )}
 
       {/* Microphone Button */}
       <button

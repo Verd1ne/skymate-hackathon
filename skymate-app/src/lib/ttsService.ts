@@ -75,7 +75,7 @@ export class TTSService {
 		// en-US-JennyNeural is a high-quality female voice
 		// en-US-GuyNeural is a high-quality male voice
 		// You can change this to any available Azure neural voice
-		speechConfig.speechSynthesisVoiceName = "en-US-ElizabethNeural";
+		speechConfig.speechSynthesisVoiceName = "en-US-AvaMultilingualNeural";
 
 		// CRITICAL: Set higher quality audio format for better mobile compatibility
 		// Riff24Khz16BitMonoPcm provides better quality than default 16kHz

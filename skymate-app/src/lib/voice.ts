@@ -1250,29 +1250,47 @@ class ContextAnalyzer {
 			}
 		);
 
-		// Fix single-digit patterns: "98" → "9A", "96" → "9B", "94" → "9D", "99" → "9E" (only if followed by seat context)
-		// CRITICAL FIX: Added 4 and 9 to pattern (for D and E seats)
-		const singleDigitPattern =
-			/\b([1-9])([8635149])(?=\s+(wants|needs|once|requests|a|an|the|blanket|pillow|water|coffee|meal|food|chicken|beef|vegetarian|assistance|help)|$|\s)/gi;
-		corrected = corrected.replace(
-			singleDigitPattern,
-			(match, seatNum, digit) => {
-				const num = parseInt(seatNum);
-				if (
-					num >= SEAT_CONSTANTS.MIN_SEAT_NUMBER &&
-					num <= 9 &&
-					DIGIT_TO_LETTER_MAP[digit]
-				) {
-					const afterMatch = corrected
-						.substring(corrected.indexOf(match) + match.length)
-						.trim();
-					if (this.isSeatContext(corrected, afterMatch)) {
-						return `${seatNum}${DIGIT_TO_LETTER_MAP[digit]}`;
-					}
-				}
-				return match;
+	// Fix single-digit patterns: "98" → "9A", "96" → "9B", "94" → "9D", "99" → "9E" (only if followed by seat context)
+	// CRITICAL FIX: Added 4 and 9 to pattern (for D and E seats)
+	// CRITICAL FIX 2: Don't match if followed by a digit that forms a valid 2-digit seat (prevents "13" → "1C")
+	const singleDigitPattern =
+		/\b([1-9])([8635149])(?=\s+(wants|needs|once|requests|a|an|the|blanket|pillow|water|coffee|meal|food|chicken|beef|vegetarian|assistance|help)|$|\s)/gi;
+	corrected = corrected.replace(
+		singleDigitPattern,
+		(match, seatNum, digit) => {
+			const num = parseInt(seatNum);
+			if (
+				num >= SEAT_CONSTANTS.MIN_SEAT_NUMBER &&
+				num <= 9 &&
+				DIGIT_TO_LETTER_MAP[digit]
+			) {
+			// CRITICAL FIX: Check if this would break apart a valid two-digit seat number
+			// e.g., Don't convert "13" to "1C" when "13A" is the actual seat
+			const matchIndex = corrected.indexOf(match);
+			
+			// If this forms part of a two-digit number (e.g., "13"), don't convert it
+			// Check: is the second digit part of a valid 2-digit seat number?
+			const twoDigitNumber = parseInt(seatNum + digit);
+			const isValidTwoDigitSeat = twoDigitNumber >= 10 && twoDigitNumber <= SEAT_CONSTANTS.MAX_SEAT_NUMBER;
+			
+			// If the next character after the pattern is 'a', 'b', 'c', etc., this is likely a seat number, not a letter conversion
+			// e.g., "13 a water" → keep as "13 a", don't convert to "1C"
+			const nextWordMatch = corrected.substring(matchIndex + match.length).match(/^\s*([a-fA-F])\b/);
+			if (isValidTwoDigitSeat && nextWordMatch) {
+				console.log(`🛡️ Preventing single-digit conversion: "${match}" would break valid seat ${twoDigitNumber}${nextWordMatch[1]}`);
+				return match; // Don't convert - this is a two-digit seat number
 			}
-		);
+				
+				const afterMatch = corrected
+					.substring(corrected.indexOf(match) + match.length)
+					.trim();
+				if (this.isSeatContext(corrected, afterMatch)) {
+					return `${seatNum}${DIGIT_TO_LETTER_MAP[digit]}`;
+				}
+			}
+			return match;
+		}
+	);
 
 		return corrected;
 	}
@@ -2315,6 +2333,7 @@ export class VoiceService {
 	private speechBuffer: string[] = []; // Buffer speech chunks to prevent word loss
 	private speechBufferTimer: ReturnType<typeof setTimeout> | null = null;
 	private lastWakeWordTime = 0; // Debounce wake word detection
+	private virtualWakeWordActive = false; // Flag: simulated wake word (button/tap) is active
 
 	// Production-level features
 	private metrics: VoiceMetrics;
@@ -2553,6 +2572,7 @@ export class VoiceService {
 		this.pendingTranscript = "";
 		this.wakeWordDetectedTime = 0;
 		this.speechBuffer = []; // Clear speech buffer
+		this.virtualWakeWordActive = false; // Clear virtual wake word flag
 		// NOTE: Don't reset wakeWordConfirmationPlayed here to prevent multiple beeps
 		// It will be reset after request processing or timeout
 
@@ -3618,6 +3638,12 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						afterWakeWord
 					);
 
+				// PRODUCTION: Team introduction command
+				const isTeamIntroCommand =
+					/\b(introduce|show|tell|display|present)(?:\s+me)?(?:\s+(?:our|the|yourself))?\s*(?:team)?\b/i.test(
+						afterWakeWord
+					) && (afterWakeWord.includes("team") || afterWakeWord.includes("yourself"));
+
 				// If it has seat + item pattern, it's likely complete
 					const hasSeatPattern = /\b\d{1,2}[A-F]\b/i.test(afterWakeWord);
 
@@ -3692,8 +3718,8 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					// Process with minimal delay (just to ensure speech is complete)
 					if (this.speechBufferTimer) clearTimeout(this.speechBufferTimer);
 					
-					// Use faster processing for seat info, describe, special requests, priority members, and task commands
-					const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand) 
+					// Use faster processing for seat info, describe, special requests, priority members, team intro, and task commands
+					const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand || isTeamIntroCommand) 
 						? 100  // Very fast for simple lookup commands
 						: TIMING_CONSTANTS.COMPLETE_REQUEST_DELAY;
 						
@@ -4520,6 +4546,11 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			this.metrics.wakeWordDetections++;
 			this.wakeWordDetected = true;
 			this.wakeWordDetectedTime = now;
+			
+			// CRITICAL FIX: Set flag to bypass wake word detection in result processors
+			// This allows the next speech result to be treated as if "Skymate" was said
+			this.virtualWakeWordActive = true;
+			this.log('info', '✅ Virtual wake word flag set - next speech will bypass wake word check');
 
 			// Trigger confirmation audio (only once per wake word)
 			if (this.onWakeWordConfirmation && !this.wakeWordConfirmationPlayed) {
@@ -4566,6 +4597,10 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			this.metrics.wakeWordDetections++;
 			this.wakeWordDetected = true;
 			this.wakeWordDetectedTime = now;
+			
+			// CRITICAL FIX: Set flag for Web Speech API too
+			this.virtualWakeWordActive = true;
+			this.log('info', '✅ Virtual wake word flag set (Web Speech) - next speech will bypass wake word check');
 
 			// Trigger confirmation audio
 			if (this.onWakeWordConfirmation && !this.wakeWordConfirmationPlayed) {
@@ -4815,14 +4850,35 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	): void {
 		if (!text || !text.trim()) return;
 
+		// CRITICAL FIX: Check for virtual wake word (button/tap activation)
+		// If active, treat this as if wake word was detected
+		const isVirtualWakeWord = this.virtualWakeWordActive;
+		
 		const wakeWordCheck = this.detectWakeWord(text);
 		const now = Date.now();
 		const wakeWordConfidenceThreshold = 0.3;
 		const isWakeWordDetected =
-			wakeWordCheck.detected && confidence >= wakeWordConfidenceThreshold;
+			(wakeWordCheck.detected && confidence >= wakeWordConfidenceThreshold) || isVirtualWakeWord;
 
 		// PRODUCTION: Debounce wake word detection to prevent duplicate triggers
 		if (isWakeWordDetected) {
+			// CRITICAL FIX: If this is a virtual wake word, session was already set up
+			// Just process the text without resetting
+			if (isVirtualWakeWord) {
+				this.log('info', '🎤 Processing speech after virtual wake word (button/tap)');
+				// Use the text as-is (no wake word to extract)
+				const normalized = text.trim();
+				if (normalized && this.currentSession) {
+					this.pendingTranscript = normalized;
+					this.currentSession.transcript = normalized;
+					this.speechBuffer = [normalized];
+					this.log('info', `📝 Accumulated text after virtual wake word: "${normalized}"`);
+				}
+				// Clear the flag - it's been used
+				this.virtualWakeWordActive = false;
+				return; // Don't process as normal wake word
+			}
+
 			const timeSinceLastWakeWord = now - this.lastWakeWordTime;
 			if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE) {
 				this.log(
@@ -4833,7 +4889,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			}
 			this.lastWakeWordTime = now;
 
-			// Reset state and start new session
+			// Reset state and start new session (for REAL wake word)
 			this.resetWakeWordState();
 			this.speechBuffer = []; // Clear buffer
 			const session = this.startNewSession();
@@ -4890,17 +4946,70 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 				if (this.currentSession) {
 					this.currentSession.transcript = this.pendingTranscript;
 				}
-
-				// Clear and reset buffer timer - wait for complete speech
-				if (this.speechBufferTimer) {
-					clearTimeout(this.speechBufferTimer);
+				
+				// Throttled logging and callback - only update if transcript has changed significantly
+				if (this.shouldUpdateInterim(this.pendingTranscript)) {
+					this.lastInterimUpdate = now;
+					this.lastInterimTranscript = this.pendingTranscript;
+					
+					// Call interim callback for UI updates (throttled)
+					if (this.onInterimTranscript) {
+						this.onInterimTranscript(this.pendingTranscript);
+					}
+					
+					this.log(
+						"debug",
+						`📝 Accumulating interim text for current session`,
+						{
+							sessionId: this.currentSession?.id,
+							transcript: this.pendingTranscript,
+							bufferLength: this.speechBuffer.length,
+						}
+					);
 				}
-				this.speechBufferTimer = setTimeout(() => {
-					// Speech has stopped - buffer is complete
-					this.clearContinuationTimeout();
-				}, TIMING_CONSTANTS.SPEECH_BUFFER_DELAY);
+
+			// Clear and reset buffer timer - wait for complete speech
+			if (this.speechBufferTimer) {
+				clearTimeout(this.speechBufferTimer);
 			}
+			
+			// CRITICAL FIX: Store session reference before timer to prevent stale references
+			const sessionToProcess = this.currentSession;
+			const transcriptToProcess = this.pendingTranscript;
+			
+			this.speechBufferTimer = setTimeout(() => {
+				// Speech has stopped - buffer is complete, process the request
+				// CRITICAL: Check session validity and process if not already processed
+				if (
+					sessionToProcess &&
+					!sessionToProcess.processed &&
+					transcriptToProcess &&
+					transcriptToProcess === this.pendingTranscript // Still the same transcript
+				) {
+					this.log(
+						"info",
+						`⏰ Processing buffered speech from virtual wake word`,
+						{
+							sessionId: sessionToProcess.id,
+							transcript: transcriptToProcess,
+						}
+					);
+					
+					// Process the request with the stored callback
+					if (_onWakeWordDetected) {
+						// Call the wake word callback to process the request
+						_onWakeWordDetected(transcriptToProcess);
+					}
+					
+					// Reset state after processing
+					this.resetWakeWordState();
+					this.speechBuffer = [];
+				} else if (sessionToProcess?.processed) {
+					this.log("debug", "Session already processed, skipping buffer timer");
+				}
+			}, TIMING_CONSTANTS.SPEECH_BUFFER_DELAY);
 		}
+	}
 	}
 
 	/**
@@ -4923,14 +5032,40 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			return;
 		}
 
+		// CRITICAL FIX: Check for virtual wake word (button/tap activation)
+		const isVirtualWakeWord = this.virtualWakeWordActive;
+		
 		const wakeWordCheck = this.detectWakeWord(text);
 		const wakeWordConfidenceThreshold = 0.4;
 		const isWakeWordDetected =
-			wakeWordCheck.detected && confidence >= wakeWordConfidenceThreshold;
+			(wakeWordCheck.detected && confidence >= wakeWordConfidenceThreshold) || isVirtualWakeWord;
 		const now = Date.now();
 
 		// PRODUCTION: Debounce wake word detection to prevent double-triggers
 		if (isWakeWordDetected) {
+			// CRITICAL FIX: If this is a virtual wake word, session was already set up
+			// Just pass the text directly to callback
+			if (isVirtualWakeWord) {
+				this.log('info', '✅ Final speech after virtual wake word (button/tap) - calling callback');
+				const normalized = text.trim();
+				if (normalized && this.currentSession) {
+					// Clear the flag first
+					this.virtualWakeWordActive = false;
+					
+					// Mark session as processed
+					this.currentSession.processed = true;
+					this.currentSession.transcript = normalized;
+					
+					// Call the callback with the full text (no wake word extraction needed)
+					onWakeWordDetected(normalized);
+					this.log('info', `🎯 Callback invoked with: "${normalized}"`);
+				} else {
+					// Clear flag even if no text
+					this.virtualWakeWordActive = false;
+				}
+				return; // Don't process as normal wake word
+			}
+
 			const timeSinceLastWakeWord = now - this.lastWakeWordTime;
 			if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE) {
 				this.log(
@@ -4994,6 +5129,12 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						afterWakeWord
 					);
 
+				// PRODUCTION: Team introduction command
+				const isTeamIntroCommand =
+					/\b(introduce|show|tell|display|present)(?:\s+me)?(?:\s+(?:our|the|yourself))?\s*(?:team)?\b/i.test(
+						afterWakeWord
+					) && (afterWakeWord.includes("team") || afterWakeWord.includes("yourself"));
+
 				// Check if request looks complete (has seat + item pattern)
 				const hasSeatPattern = /\b\d{1,2}[A-F]\b/i.test(afterWakeWord);
 
@@ -5054,8 +5195,8 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 				// PRODUCTION: Store session in closure to ensure it's available when timer fires
 				const sessionToProcess = session;
 
-				// Use faster processing for seat info, describe, special requests, priority members, and task commands
-				const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand) 
+				// Use faster processing for seat info, describe, special requests, priority members, team intro, and task commands
+				const processingDelay = (isSeatInfoCommand || isDescribeCommand || isTaskCommand || isSpecialRequestsCommand || isPriorityMembersCommand || isTeamIntroCommand) 
 					? 100  // Very fast for simple lookup commands
 					: TIMING_CONSTANTS.COMPLETE_REQUEST_DELAY;
 
@@ -5536,6 +5677,8 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	const specialRequestsPattern = /\b(remind|tell|show|display|list|what|give|info|information)(?:\s+me)?(?:\s+of)?(?:\s+about)?(?:\s+the)?(?:\s+all)?(?:\s+special\s*requests?)\b/i;
 	// NEW: Priority members list command (e.g., "who is priority member", "list priority members")
 	const priorityMembersPattern = /\b(who|which|list|show|display|tell|what|give|info|information)(?:\s+me)?(?:\s+is)?(?:\s+are)?(?:\s+the)?(?:\s+all)?(?:\s+priority\s*members?)\b/i;
+	// NEW: Team introduction command (e.g., "introduce our team", "introduce the team", "introduce yourself")
+	const teamIntroPattern = /\b(introduce|show|tell|display|present)(?:\s+me)?(?:\s+(?:our|the|yourself))?\s*(?:team)?\b/i;
 	// Exclude task commands from being detected as seat info
 	const isTaskCommand = /\b(task|past|ask)\s+\d+/i.test(session.transcript);
 	
@@ -5601,6 +5744,17 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	
 	if (priorityMembersPattern.test(session.transcript)) {
 		this.log("info", "⭐ Priority members list command detected - bypassing scoring pipeline", {
+			transcript: session.transcript,
+		});
+		// Mark as processed and pass through to callback immediately
+		session.processed = true;
+		onTranscript(session.transcript);
+		return; // Early exit
+	}
+	
+	if (teamIntroPattern.test(session.transcript) && 
+		(session.transcript.toLowerCase().includes("team") || session.transcript.toLowerCase().includes("yourself"))) {
+		this.log("info", "👥 Team introduction command detected - bypassing scoring pipeline", {
 			transcript: session.transcript,
 		});
 		// Mark as processed and pass through to callback immediately

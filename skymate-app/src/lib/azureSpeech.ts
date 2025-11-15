@@ -138,6 +138,13 @@ const AVIATION_PHRASE_HINTS = [
 	"show priority members",
 	"which passengers are priority members",
 	"priority members",
+	// Team introduction commands
+	"introduce our team",
+	"introduce the team",
+	"introduce yourself",
+	"team introduction",
+	"who are we",
+	"our team",
 	// Meals (core items) - EXPANDED with missing items
 	"chicken meal",
 	"beef meal",

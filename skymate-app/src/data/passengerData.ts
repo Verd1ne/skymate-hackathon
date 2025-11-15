@@ -46,7 +46,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
     seatNumber: "3B",
     passengerName: "Lisa Tan",
     mealPreference: "vegan",
-    dietaryRestrictions: ["vegan"],
+    dietaryRestrictions: ["nuts"],
   },
   "4A": {
     seatNumber: "4A",

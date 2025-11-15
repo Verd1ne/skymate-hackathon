@@ -105,7 +105,11 @@ export async function parseRequest(
   const startTime = Date.now();
   
   // Check cache first
-  const cacheKey = transcript.toLowerCase().trim();
+  const cacheKey = transcript
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ') // normalize whitespace
+    .replace(/[.,!?]/g, ''); // remove punctuation
   const cached = parseCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     const duration = Date.now() - startTime;

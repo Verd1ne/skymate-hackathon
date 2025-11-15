@@ -11,7 +11,7 @@ const SEAT_CONSTANTS = {
 const TIMING_CONSTANTS = {
 	MIC_READY_DELAY: 400, // ms
 	MIC_READY_BUFFER: 200, // ms
-	WAKE_WORD_TIMEOUT: 8000, // 8 seconds - Reduced from 10s for faster demo responsiveness
+	WAKE_WORD_TIMEOUT: 4000, // 4 seconds - Reduced for faster timeout when no command follows wake word
 	RECOGNITION_RESTART_DELAY: 500, // ms - INCREASED: prevent "aborted" errors
 	RECOGNITION_RESTART_RETRY: 1000, // ms - INCREASED: more conservative retry timing
 	MAX_RESTART_ATTEMPTS: 3, // REDUCED: prevent excessive restart attempts

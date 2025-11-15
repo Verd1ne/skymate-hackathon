@@ -657,11 +657,19 @@ export function getPassengerInfo(seatNumber: string): PassengerInfo | null {
 /**
  * Format passenger information into a spoken response
  * @param info - Passenger information
+ * @param requestedItem - Optional actual item being requested (overrides meal preference)
  * @returns Formatted string for TTS
  */
+<<<<<<< Updated upstream
 export function formatPassengerInfo(info: PassengerInfo): string {
   // More concise format: "Seat 5A Andrew Chan wanted the beef meal"
   let response = `Seat ${info.seatNumber}, ${info.passengerName} wanted the ${info.mealPreference} meal`;
+=======
+export function formatPassengerInfo(info: PassengerInfo, requestedItem?: string): string {
+  // If requestedItem is provided, use it; otherwise use meal preference
+  const itemDescription = requestedItem || `${info.mealPreference} meal`;
+  let response = `Seat ${info.seatNumber}, ${info.passengerName} wanted the ${itemDescription}`;
+>>>>>>> Stashed changes
 
   // Add dietary restrictions if any
   if (info.dietaryRestrictions && info.dietaryRestrictions.length > 0) {
@@ -677,6 +685,39 @@ export function formatPassengerInfo(info: PassengerInfo): string {
 
   response += ".";
   return response;
+<<<<<<< Updated upstream
+=======
+}
+
+/**
+ * Format basic passenger information without meal preference
+ * Used for general seat inquiries where no specific request context exists
+ * @param info - Passenger information
+ * @returns Formatted string for TTS
+ */
+export function formatBasicPassengerInfo(info: PassengerInfo): string {
+  let response = `Seat ${info.seatNumber} is ${info.passengerName}`;
+
+  // Add priority member status if applicable
+  if (info.priorityMember) {
+    response += ", who is a priority member";
+  }
+
+  // Add dietary restrictions if any
+  if (info.dietaryRestrictions && info.dietaryRestrictions.length > 0) {
+    const restrictions = info.dietaryRestrictions.join(" and ");
+    response += ` with ${restrictions} dietary restrictions`;
+  }
+
+  // Add special requests if any
+  if (info.specialRequests && info.specialRequests.length > 0) {
+    const requests = info.specialRequests.join(", ");
+    response += `. They have requested ${requests}`;
+  }
+
+  response += ".";
+  return response;
+>>>>>>> Stashed changes
 }
 
 /**

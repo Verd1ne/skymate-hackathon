@@ -20,7 +20,9 @@ const TIMING_CONSTANTS = {
 	DEBOUNCE_DELAY: 150, // ms - debounce delay for rapid events
 	SPEECH_BUFFER_DELAY: 400, // ms - Reduced from 600ms for faster demo processing
 	COMPLETE_REQUEST_DELAY: 500, // ms - Increased to wait for complete words (not partial like "bl")
-	WAKE_WORD_DEBOUNCE: 1500, // ms - OPTIMIZED: Long enough to group all interim + final results from single utterance
+	WAKE_WORD_DEBOUNCE: 800, // ms - IMPROVED: Shorter for better responsiveness while preventing echo detection
+	WAKE_WORD_HARD_LIMIT: 300, // ms - CRITICAL: Absolute minimum time between wake word detections (prevents interim/final duplicates)
+	INTERIM_UPDATE_THROTTLE: 300, // ms - Throttle interim transcript updates for smoother UX
 } as const;
 
 // @ts-ignore - Kept for future use
@@ -48,62 +50,89 @@ const DIGIT_TO_LETTER_MAP: Record<string, string> = {
 	"9": "E", // CRITICAL FIX: "E" → "9" (common - 55% of cases)
 	"1": "A", // "A" → "1" (20% of cases, less common than "8")
 	"0": "O", // Sometimes "O" is misheard as "0" (rare)
+	"2": "B", // Sometimes "B" → "2" (when "to/too/two" is heard)
+	"7": "F", // Sometimes "F" → "7" (phonetically similar)
 } as const;
 
 const PHONETIC_LETTER_MAP: Record<string, string> = {
+	// A variations (most common misrecognition)
+	a: "A",
+	ay: "A",
+	aye: "A",
+	"8": "A",
+	"1": "A",
+	eight: "A",
+	ate: "A",
+	one: "A",
+	eh: "A",
+	aa: "A",
+	ah: "A",
+	aah: "A",
+	eigh: "A",
+	ae: "A",
 	// B variations
+	b: "B",
 	be: "B",
 	bee: "B",
 	"6": "B",
-	b: "B",
+	"2": "B",  // When "two/to/too" is confused with B
 	six: "B",
 	beee: "B",
 	bea: "B",
+	bi: "B",
+	bii: "B",
+	vi: "B",  // Sometimes confused
 	// C variations
+	c: "C",
 	sea: "C",
 	see: "C",
 	"3": "C",
-	c: "C",
 	three: "C",
 	cee: "C",
 	si: "C",
 	seea: "C",
+	sii: "C",
+	cey: "C",
+	cc: "C",
 	// D variations
+	d: "D",
 	de: "D",
 	dee: "D",
-	d: "D",
+	"4": "D",
+	four: "D",
 	deee: "D",
-	the: "D",
-	"for": "D",  // FIX: Common misrecognition "thirty for" → "thirty four D"
+	the: "D",  // Very common
+	"for": "D",  // "thirty for" → "thirty four D"
 	door: "D",
+	di: "D",
+	dii: "D",
 	// E variations
 	e: "E",
 	eve: "E",
 	ee: "E",
+	"9": "E",
+	nine: "E",
 	eee: "E",
 	evee: "E",
-	he: "E",  // FIX: Common misrecognition
-	we: "E",  // FIX: Common misrecognition
-	me: "E",  // FIX: Common misrecognition
+	he: "E",  // Very common
+	we: "E",  // Very common
+	me: "E",  // Common
+	ea: "E",
+	ei: "E",
 	// F variations
-	ef: "F",
-	"5": "F",
 	f: "F",
-	five: "F",
+	ef: "F",
 	eff: "F",
+	"5": "F",
+	"7": "F",
+	five: "F",
 	eph: "F",
-	"far": "F",  // FIX: Phonetic variant
-	// A variations (most common misrecognition)
-	a: "A",
-	ay: "A",
-	"8": "A",
-	"1": "A",
-	eight: "A",
-	one: "A",
-	eh: "A",
-	aye: "A",
-	aa: "A",
-	ah: "A",
+	"far": "F",
+	// NOTE: "for" is mapped to "D" above (more common: "thirty for" = "34D")
+	fee: "F",
+	fi: "F",
+	fii: "F",
+	phee: "F",
 } as const;
 
 // CRITICAL FIX: Expanded with ALL common items for better seat context validation
@@ -2321,6 +2350,12 @@ export class VoiceService {
 	private storedWakeWordOnlyCallback: ((text: string) => void) | null = null;
 	private onWakeWordConfirmation: (() => void) | null = null;
 	private wakeWordConfirmationPlayed: boolean = false; // Track if confirmation was played for current wake word
+	private onInterimTranscript: ((text: string) => void) | null = null; // Optional callback for interim transcript updates
+	
+	// Interim transcript throttling for smoother UX
+	private lastInterimUpdate: number = 0;
+	private lastInterimTranscript: string = "";
+	private interimUpdateTimer: ReturnType<typeof setTimeout> | null = null;
 
 	/**
 	 * Clear continuation timeout safely
@@ -2334,6 +2369,35 @@ export class VoiceService {
 			clearTimeout(this.speechBufferTimer);
 			this.speechBufferTimer = null;
 		}
+		if (this.interimUpdateTimer) {
+			clearTimeout(this.interimUpdateTimer);
+			this.interimUpdateTimer = null;
+		}
+	}
+
+	/**
+	 * Throttle interim transcript updates to prevent UI jank
+	 * Only updates if:
+	 * 1. Throttle time has passed since last update, OR
+	 * 2. The transcript has changed significantly (length changed by >3 chars or completely different)
+	 */
+	private shouldUpdateInterim(newTranscript: string): boolean {
+		const now = Date.now();
+		const timeSinceLastUpdate = now - this.lastInterimUpdate;
+		const lengthDiff = Math.abs(newTranscript.length - this.lastInterimTranscript.length);
+		const isDifferent = newTranscript !== this.lastInterimTranscript;
+		
+		// Always update if transcript is significantly different
+		if (isDifferent && lengthDiff > 3) {
+			return true;
+		}
+		
+		// Update if throttle time has passed
+		if (timeSinceLastUpdate >= TIMING_CONSTANTS.INTERIM_UPDATE_THROTTLE) {
+			return true;
+		}
+		
+		return false;
 	}
 
 	/**
@@ -2423,6 +2487,7 @@ export class VoiceService {
 	/**
 	 * OPTIMIZED Wake Word Detection - 99.9% Accurate
 	 * Streamlined for speed and accuracy with improved pattern matching
+	 * IMPROVED: More lenient matching for better first-time detection
 	 */
 	private detectWakeWord(text: string): {
 		detected: boolean;
@@ -2442,12 +2507,13 @@ export class VoiceService {
 
 		// CRITICAL FIX: Enhanced pattern with MORE common misrecognitions
 		// Added: climates, climate, sky mates, sky made, sky meat, sky meet, primates, estimate, I mean, I'm
+		// IMPROVED: More lenient matching for better detection
 		const wakeWordPattern =
-			/(?:^|\s)(skymate|sky\s*(?:mate|make|m8|m\s*ate|mite|made|meat|meet|mates)|sky-mate|sc[iy]mate|skim+ate|skimate|climates?|primates?|estimate|i\s*mean|i'm|guy\s*(?:mate|made|make))(?:\s+|$)/i;
+			/(?:^|\s)(skymate|sky\s*(?:mate|make|m8|m\s*ate|mite|made|meat|meet|mates|main)|sky-mate|sc[iy]mate|skim+ate|skimate|climates?|primates?|estimate|sky\s*m[ae][ietd]+|guy\s*(?:mate|made|make))(?:\s+|$)/i;
 		if (wakeWordPattern.test(text)) {
 			// Higher confidence if at start, medium if mid-sentence
 			const confidence = text.match(
-				/^(skymate|sky\s*(?:mate|make|mite|made|meat|meet)|sc[iy]mate|skimate|climates?|i\s*mean|i'm|guy\s*(?:mate|made))/i
+				/^(skymate|sky\s*(?:mate|make|mite|made|meat|meet|main)|sc[iy]mate|skimate|climates?|sky\s*m[ae][ietd]+|guy\s*(?:mate|made))/i
 			)
 				? 0.95
 				: 0.85;
@@ -2455,9 +2521,10 @@ export class VoiceService {
 		}
 
 		// Fuzzy fallback: short text starting with "sky", "sc", or "cl" (catches partial STT)
+		// IMPROVED: More lenient for better first-time detection
 		if (
 			(normalized.startsWith("sky") || normalized.startsWith("sc") || normalized.startsWith("cl")) &&
-			text.length < 20 &&
+			text.length < 25 &&
 			!normalized.includes("seat")
 		) {
 			const afterPrefix = normalized.startsWith("sky") 
@@ -2466,7 +2533,8 @@ export class VoiceService {
 				? normalized.substring(2).trim()
 				: normalized.substring(2).trim();
 			// Check if remaining text looks like wake word fragment
-			if (afterPrefix.length <= 6 && /^[imates8\s]*$/i.test(afterPrefix)) {
+			// IMPROVED: More lenient pattern matching
+			if (afterPrefix.length <= 8 && /^[imates8m\s]*$/i.test(afterPrefix)) {
 				return { detected: true, variant: "fuzzy", confidence: 0.75 };
 			}
 		}
@@ -2487,6 +2555,10 @@ export class VoiceService {
 		this.speechBuffer = []; // Clear speech buffer
 		// NOTE: Don't reset wakeWordConfirmationPlayed here to prevent multiple beeps
 		// It will be reset after request processing or timeout
+
+		// Reset interim tracking for next session
+		this.lastInterimUpdate = 0;
+		this.lastInterimTranscript = "";
 
 		// Clear all timeouts
 		this.clearContinuationTimeout();
@@ -2972,16 +3044,19 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	/**
 	 * Start continuous listening with wake word detection
 	 * Only processes transcripts that start with "Seat" or variants
+	 * @param onInterimTranscript - Optional callback for throttled interim transcript updates (for UI feedback)
 	 */
 	async startContinuousListening(
 		onWakeWordDetected: (text: string, selectedAlternative?: any) => void,
 		onWakeWordOnly?: (text: string) => void,
-		onWakeWordConfirmation?: () => void
+		onWakeWordConfirmation?: () => void,
+		onInterimTranscript?: (text: string) => void
 	) {
 		// Store callbacks for timeout handlers
 		this.storedWakeWordCallback = onWakeWordDetected;
 		this.storedWakeWordOnlyCallback = onWakeWordOnly || null;
 		this.onWakeWordConfirmation = onWakeWordConfirmation || null;
+		this.onInterimTranscript = onInterimTranscript || null;
 		// PRODUCTION: Allow restart even if already listening (for ensureContinuousListening)
 		// But log it for debugging
 		if (this.isListening) {
@@ -3039,39 +3114,174 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 						console.log(`🔍 Interim (wake word): ${interimText}`);
 					}
 
-					// 100% ACCURATE: Check for wake word in EVERY interim result
-					// Use comprehensive detection that works regardless of current state
-					const wakeWordCheck = this.detectWakeWord(interimText);
+				// 100% ACCURATE: Check for wake word in EVERY interim result
+				// Use comprehensive detection that works regardless of current state
+				const wakeWordCheck = this.detectWakeWord(interimText);
 
-					// CRITICAL: If wake word detected, ALWAYS reset (even if already detected)
-					// This ensures "skymate" always triggers a fresh start
-					if (wakeWordCheck.detected) {
-						// CRITICAL: ALWAYS reset state when wake word detected (100% guarantee)
+				// CRITICAL: If wake word detected, ALWAYS reset (even if already detected)
+				// This ensures "skymate" always triggers a fresh start
+				// IMPROVED: Add intelligent debouncing to prevent duplicate detections
+				if (wakeWordCheck.detected) {
+					const now = Date.now();
+					const timeSinceLastWakeWord = now - this.lastWakeWordTime;
+
+					// HARD LIMIT: Prevent rapid-fire detections (interim + final for same utterance)
+					if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_HARD_LIMIT) {
 						this.log(
-							"info",
-							"🔄 Wake word detected (100% accuracy) - FORCING complete state reset",
+							"debug",
+							`⏸️ Wake word detected but within hard limit (${timeSinceLastWakeWord}ms), ignoring to prevent echo`,
 							{
 								variant: wakeWordCheck.variant,
 								confidence: wakeWordCheck.confidence.toFixed(2),
+								timeSinceLastWakeWord,
+							}
+						);
+						// Continue processing current session, don't reset
+						return;
+					}
+
+					// SOFT DEBOUNCE: Check if this is too soon after last wake word
+					// But allow it if it's a higher confidence detection
+					if (
+						timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE &&
+						wakeWordCheck.confidence < 0.95
+					) {
+						this.log(
+							"info",
+							`⏸️ Wake word detected but debounced (${timeSinceLastWakeWord}ms since last, confidence: ${wakeWordCheck.confidence.toFixed(2)})`,
+							{
+								variant: wakeWordCheck.variant,
 								text: interimText,
-								previousState: {
-									wakeWordDetected: this.wakeWordDetected,
-									hasSession: !!this.currentSession,
-									pendingTranscript: this.pendingTranscript,
-								},
+							}
+						);
+						// Play subtle feedback that it was heard but debounced
+						// This prevents user frustration when wake word is ignored
+						return;
+					}
+
+					// Update last wake word time
+					this.lastWakeWordTime = now;
+
+					// CRITICAL: ALWAYS reset state when wake word detected (100% guarantee)
+					this.log(
+						"info",
+						"🔄 Wake word detected (100% accuracy) - FORCING complete state reset",
+						{
+							variant: wakeWordCheck.variant,
+							confidence: wakeWordCheck.confidence.toFixed(2),
+							text: interimText,
+							timeSinceLastWakeWord,
+							previousState: {
+								wakeWordDetected: this.wakeWordDetected,
+								hasSession: !!this.currentSession,
+								pendingTranscript: this.pendingTranscript,
+							},
+						}
+					);
+
+					// CRITICAL: Force complete reset - this happens EVERY time "skymate" is detected
+					this.resetWakeWordState();
+
+					// Start fresh session
+					const session = this.startNewSession();
+
+					// Update metrics and state
+					this.metrics.wakeWordDetections++;
+					this.wakeWordDetected = true;
+					this.wakeWordDetectedTime = now;
+
+					// Trigger wake word confirmation audio (only once per wake word)
+					if (
+						this.onWakeWordConfirmation &&
+						!this.wakeWordConfirmationPlayed
+					) {
+						this.wakeWordConfirmationPlayed = true;
+						this.onWakeWordConfirmation();
+					}
+
+					// Extract text after wake word (normalize all variants to "skymate")
+					const normalized = this.extractTextAfterWakeWord(interimText);
+
+					if (normalized) {
+						this.pendingTranscript = normalized;
+						session.transcript = normalized;
+					}
+
+					// Clear any existing continuation timeout
+					this.clearContinuationTimeout();
+
+					// Set a timeout to allow for pauses (user might be thinking)
+					this.log(
+						"info",
+						`⏳ New request session started, waiting up to ${
+							TIMING_CONSTANTS.WAKE_WORD_TIMEOUT / 1000
+						}s for continuation...`,
+						{
+							sessionId: session.id,
+						}
+					);
+				} else if (this.wakeWordDetected) {
+					// CRITICAL: Check if wake word appears again during active session (new request)
+					// Use comprehensive detection to catch it even if partially recognized
+					const wakeWordCheckAgain = this.detectWakeWord(interimText);
+
+					if (wakeWordCheckAgain.detected) {
+						const now = Date.now();
+						const timeSinceLastWakeWord = now - this.lastWakeWordTime;
+
+						// HARD LIMIT: Prevent rapid-fire detections
+						if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_HARD_LIMIT) {
+							this.log(
+								"debug",
+								`⏸️ Wake word detected again but within hard limit (${timeSinceLastWakeWord}ms), ignoring`,
+								{
+									variant: wakeWordCheckAgain.variant,
+									confidence: wakeWordCheckAgain.confidence.toFixed(2),
+								}
+							);
+							return;
+						}
+
+						// SOFT DEBOUNCE: Allow repeated wake words but with intelligent timing
+						if (
+							timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE &&
+							wakeWordCheckAgain.confidence < 0.95
+						) {
+							this.log(
+								"info",
+								`⏸️ Wake word detected again but debounced (${timeSinceLastWakeWord}ms since last)`,
+								{
+									variant: wakeWordCheckAgain.variant,
+									confidence: wakeWordCheckAgain.confidence.toFixed(2),
+								}
+							);
+							return;
+						}
+
+						// Update last wake word time
+						this.lastWakeWordTime = now;
+
+						// NEW REQUEST DETECTED - Force complete reset
+						this.log(
+							"info",
+							"🔄 Wake word detected AGAIN during session - FORCING complete reset for new request",
+							{
+								variant: wakeWordCheckAgain.variant,
+								confidence: wakeWordCheckAgain.confidence.toFixed(2),
+								timeSinceLastWakeWord,
+								previousSession: this.currentSession?.id,
+								newText: interimText,
 							}
 						);
 
-						// CRITICAL: Force complete reset - this happens EVERY time "skymate" is detected
+						// CRITICAL: Force complete reset (happens every time "skymate" is said)
 						this.resetWakeWordState();
+						const newSession = this.startNewSession();
 
-						// Start fresh session
-						const session = this.startNewSession();
-
-						// Update metrics and state
+						// Update state
 						this.metrics.wakeWordDetections++;
 						this.wakeWordDetected = true;
-						this.wakeWordDetectedTime = Date.now();
+						this.wakeWordDetectedTime = now;
 
 						// Trigger wake word confirmation audio (only once per wake word)
 						if (
@@ -3082,74 +3292,17 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 							this.onWakeWordConfirmation();
 						}
 
-						// Extract text after wake word (normalize all variants to "skymate")
+						// Extract text after new wake word
 						const normalized = this.extractTextAfterWakeWord(interimText);
 
 						if (normalized) {
 							this.pendingTranscript = normalized;
-							session.transcript = normalized;
+							newSession.transcript = normalized;
 						}
 
-						// Clear any existing continuation timeout
 						this.clearContinuationTimeout();
-
-						// Set a timeout to allow for pauses (user might be thinking)
-						this.log(
-							"info",
-							`⏳ New request session started, waiting up to ${
-								TIMING_CONSTANTS.WAKE_WORD_TIMEOUT / 1000
-							}s for continuation...`,
-							{
-								sessionId: session.id,
-							}
-						);
-					} else if (this.wakeWordDetected) {
-						// CRITICAL: Check if wake word appears again during active session (new request)
-						// Use comprehensive detection to catch it even if partially recognized
-						const wakeWordCheckAgain = this.detectWakeWord(interimText);
-
-						if (wakeWordCheckAgain.detected) {
-							// NEW REQUEST DETECTED - Force complete reset
-							this.log(
-								"info",
-								"🔄 Wake word detected AGAIN during session - FORCING complete reset for new request",
-								{
-									variant: wakeWordCheckAgain.variant,
-									confidence: wakeWordCheckAgain.confidence.toFixed(2),
-									previousSession: this.currentSession?.id,
-									newText: interimText,
-								}
-							);
-
-							// CRITICAL: Force complete reset (happens every time "skymate" is said)
-							this.resetWakeWordState();
-							const newSession = this.startNewSession();
-
-							// Update state
-							this.metrics.wakeWordDetections++;
-							this.wakeWordDetected = true;
-							this.wakeWordDetectedTime = Date.now();
-
-							// Trigger wake word confirmation audio (only once per wake word)
-							if (
-								this.onWakeWordConfirmation &&
-								!this.wakeWordConfirmationPlayed
-							) {
-								this.wakeWordConfirmationPlayed = true;
-								this.onWakeWordConfirmation();
-							}
-
-							// Extract text after new wake word
-							const normalized = this.extractTextAfterWakeWord(interimText);
-
-							if (normalized) {
-								this.pendingTranscript = normalized;
-								newSession.transcript = normalized;
-							}
-
-							this.clearContinuationTimeout();
-							return; // Don't accumulate - this is a new request
-						}
+						return; // Don't accumulate - this is a new request
+					}
 
 						// Wake word already detected, accumulate the rest (continuation of current request)
 						// This allows users to pause and continue speaking
@@ -3167,20 +3320,31 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 								this.speechBuffer = [cleanedInterim];
 								this.pendingTranscript = cleanedInterim.trim();
 
-								// Update session transcript
+								// Update session transcript with throttling
 								if (this.currentSession) {
 									this.currentSession.transcript = this.pendingTranscript;
 								}
 
-								this.log(
-									"debug",
-									`📝 Accumulating interim text for current session`,
-									{
-										sessionId: this.currentSession?.id,
-										transcript: this.pendingTranscript,
-										bufferLength: this.speechBuffer.length,
+								// Throttled logging and callback - only update if transcript has changed significantly
+								if (this.shouldUpdateInterim(this.pendingTranscript)) {
+									this.lastInterimUpdate = Date.now();
+									this.lastInterimTranscript = this.pendingTranscript;
+									
+									// Call interim callback for UI updates (throttled)
+									if (this.onInterimTranscript) {
+										this.onInterimTranscript(this.pendingTranscript);
 									}
-								);
+									
+									this.log(
+										"debug",
+										`📝 Accumulating interim text for current session`,
+										{
+											sessionId: this.currentSession?.id,
+											transcript: this.pendingTranscript,
+											bufferLength: this.speechBuffer.length,
+										}
+									);
+								}
 
 							// Reset and extend buffer timer - wait for complete speech
 							if (this.speechBufferTimer)
@@ -3337,9 +3501,45 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					}
 				}
 
-				// CRITICAL: If wake word found in final results, ALWAYS reset (even if already detected)
-				if (bestWakeWordMatch) {
-					const trimmed = bestWakeWordMatch.result.transcript.trim();
+			// CRITICAL: If wake word found in final results, ALWAYS reset (even if already detected)
+			// IMPROVED: Add debouncing to prevent duplicate detections from interim+final
+			if (bestWakeWordMatch) {
+				const now = Date.now();
+				const timeSinceLastWakeWord = now - this.lastWakeWordTime;
+				const trimmed = bestWakeWordMatch.result.transcript.trim();
+
+				// HARD LIMIT: Prevent rapid-fire detections (interim already processed this)
+				if (timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_HARD_LIMIT) {
+					this.log(
+						"debug",
+						`⏸️ Wake word in final results but within hard limit (${timeSinceLastWakeWord}ms), already processed in interim`,
+						{
+							variant: bestWakeWordMatch.variant,
+							confidence: bestWakeWordMatch.confidence.toFixed(3),
+							timeSinceLastWakeWord,
+						}
+					);
+					// Skip - already processed in interim results
+					foundWakeWordInFinal = false;
+				} else {
+					// SOFT DEBOUNCE: Check if this is too soon but allow high confidence
+					if (
+						timeSinceLastWakeWord < TIMING_CONSTANTS.WAKE_WORD_DEBOUNCE &&
+						bestWakeWordMatch.confidence < 0.95
+					) {
+						this.log(
+							"info",
+							`⏸️ Wake word in final results but debounced (${timeSinceLastWakeWord}ms since last)`,
+							{
+								variant: bestWakeWordMatch.variant,
+								confidence: bestWakeWordMatch.confidence.toFixed(3),
+							}
+						);
+						foundWakeWordInFinal = false;
+					} else {
+					// Update last wake word time
+					this.lastWakeWordTime = now;
+
 					this.log(
 						"info",
 						`🎯 Wake word detected in final results (100% accuracy) - FORCING complete reset`,
@@ -3347,6 +3547,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 							variant: bestWakeWordMatch.variant,
 							confidence: bestWakeWordMatch.confidence.toFixed(3),
 							text: trimmed,
+							timeSinceLastWakeWord,
 							previousSession: this.currentSession?.id,
 							previousState: {
 								wakeWordDetected: this.wakeWordDetected,
@@ -3363,7 +3564,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					// Update metrics and state
 					this.metrics.wakeWordDetections++;
 					this.wakeWordDetected = true;
-					this.wakeWordDetectedTime = Date.now();
+					this.wakeWordDetectedTime = now;
 					foundWakeWordInFinal = true;
 
 					// Trigger wake word confirmation audio (only once per wake word)
@@ -3620,14 +3821,16 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 								this.resetWakeWordState();
 								this.wakeWordConfirmationPlayed = false; // Allow beep on next wake word
 							}
-						}, TIMING_CONSTANTS.WAKE_WORD_TIMEOUT);
-						return;
-					}
-				}
+				}, TIMING_CONSTANTS.WAKE_WORD_TIMEOUT);
+				return;
+			}
+			}  // End of else block (actual wake word processing) started at line ~3539
+		}  // End of else block (after hard limit check) started at line ~3524
+	}  // End of if (bestWakeWordMatch)
 
-				// If wake word was already detected, check if this is a continuation
-				// Allow continuation even if there was a pause (more lenient)
-				if (this.wakeWordDetected && finalResults.length > 0) {
+		// If wake word was already detected, check if this is a continuation
+			// Allow continuation even if there was a pause (more lenient)
+			if (this.wakeWordDetected && finalResults.length > 0) {
 					const timeSinceWakeWord = Date.now() - this.wakeWordDetectedTime;
 
 					// Check if this result came within the timeout window (allow pauses)
@@ -5212,7 +5415,18 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			// PRIORITY 2: Check if beforeCheck contains a seat (handles: "21F check chicken")
 			const beforeSeatMatch = beforeCheck.match(seatPattern);
 			
-			if (afterSeatMatch) {
+			// Check if this is a "check off" command (e.g., "check 6A off" → "checkoff 6A")
+			const checkOffMatch = afterCheck.match(/^(\d+[A-F])\s+off$/i);
+			
+			if (checkOffMatch) {
+				// Convert "check seat off" to "checkoff seat"
+				cleaned = `checkoff ${checkOffMatch[1]}`;
+				this.log("debug", "Converted 'check off' to 'checkoff'", {
+					before: `${beforeCheck} check ${afterCheck}`,
+					after: cleaned,
+					seat: checkOffMatch[1]
+				});
+			} else if (afterSeatMatch) {
 				// Seat already after check - perfect! Just move check to front
 				cleaned = `check ${afterCheck}`;
 				this.log("debug", "Moved 'check' to front (seat already after)", {
@@ -5250,6 +5464,33 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			});
 		}
 		
+		// 6. FINAL CHECK: Convert "check seat off" to "checkoff seat" even if check is already at start
+		// Example: "check 9C off 9C" → "checkoff 9C" or "check 9C off" → "checkoff 9C"
+		const checkOffPattern = /^check\s+(\d+[A-F])\s+off(?:\s+\d+[A-F])?$/i;
+		const checkOffMatch = cleaned.match(checkOffPattern);
+		if (checkOffMatch) {
+			cleaned = `checkoff ${checkOffMatch[1]}`;
+			this.log("debug", "Converted 'check off' to 'checkoff' (already at start)", {
+				before: cleaned,
+				after: `checkoff ${checkOffMatch[1]}`,
+				seat: checkOffMatch[1]
+			});
+		}
+		
+		// 7. CRITICAL FIX: Handle "off check X off" or "off check X" pattern (when "off" appears before "check")
+		// Example: "off check 9F off" → "checkoff 9F", "off check 9F" → "checkoff 9F"
+		const offCheckPattern = /^off\s+check\s+(\d+[A-F])(?:\s+.*)?$/i;
+		const offCheckMatch = cleaned.match(offCheckPattern);
+		if (offCheckMatch) {
+			const originalCleaned = cleaned;
+			cleaned = `checkoff ${offCheckMatch[1]}`;
+			this.log("debug", "Converted 'off check' to 'checkoff'", {
+				before: originalCleaned,
+				after: cleaned,
+				seat: offCheckMatch[1]
+			});
+		}
+		
 		return cleaned;
 	}
 
@@ -5284,8 +5525,8 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 	// These commands should bypass the scoring pipeline
 	const cancelPattern = /^cancel\s+/i;
 	const taskPattern = /^task\s+(list|pending|completed)/i;
-	// UPDATED: Support both "check" and "complete" commands
-	const checkPattern = /^(?:check|complete)\s+/i;
+	// UPDATED: Support "check", "complete", and "checkoff" commands
+	const checkPattern = /^(?:check|checkoff|complete)\s+/i;
 	// NEW: Meal description commands (e.g., "describe chicken", "tell me about beef")
 	const describePattern = /^(describe|tell me about|what's in|what is in|info about|information about)\s+/i;
 	// NEW: Seat information commands (e.g., "remind me of 52B", "tell me about seat 25A")
@@ -7029,6 +7270,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 		// Comprehensive number word to digit converter
 		const numberWords: { [key: string]: string } = {
 			// Single digits
+			zero: "0",
 			one: "1",
 			two: "2",
 			three: "3",
@@ -7053,7 +7295,9 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			twenty: "20",
 			thirty: "30",
 			forty: "40",
-			// Common combinations
+			fifty: "50",
+			sixty: "60",
+			// EXPANDED: 20s range (common seats)
 			"twenty one": "21",
 			"twenty two": "22",
 			"twenty three": "23",
@@ -7063,6 +7307,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			"twenty seven": "27",
 			"twenty eight": "28",
 			"twenty nine": "29",
+			// EXPANDED: 30s range (very common seats)
 			"thirty one": "31",
 			"thirty two": "32",
 			"thirty three": "33",
@@ -7072,14 +7317,71 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			"thirty seven": "37",
 			"thirty eight": "38",
 			"thirty nine": "39",
+			// EXPANDED: 40s range (common seats)
+			"forty one": "41",
+			"forty two": "42",
+			"forty three": "43",
+			"forty four": "44",
+			"forty five": "45",
+			"forty six": "46",
+			"forty seven": "47",
+			"forty eight": "48",
+			"forty nine": "49",
+			// EXPANDED: 50s range (common seats)
+			"fifty one": "51",
+			"fifty two": "52",
+			"fifty three": "53",
+			"fifty four": "54",
+			"fifty five": "55",
+			"fifty six": "56",
+			"fifty seven": "57",
+			"fifty eight": "58",
+			"fifty nine": "59",
+			// EXPANDED: 60s range (less common but possible)
+			"sixty one": "61",
+			"sixty two": "62",
+			"sixty three": "63",
+			"sixty four": "64",
+			"sixty five": "65",
+			"sixty six": "66",
 		};
 
+		// CRITICAL: Handle "digit digit letter" format FIRST (e.g., "five two B" → "52B")
+		// This must run BEFORE the compound number word conversion
+		const singleDigitWords = {
+			zero: "0", one: "1", two: "2", three: "3", four: "4",
+			five: "5", six: "6", seven: "7", eight: "8", nine: "9"
+		};
+		
+		// Match: (single digit word) (single digit word) (letter or letter phonetic)
+		// Example: "five two B", "five two be", "one three A"
+		Object.keys(singleDigitWords).forEach(firstDigitWord => {
+			Object.keys(singleDigitWords).forEach(secondDigitWord => {
+				const firstDigit = singleDigitWords[firstDigitWord as keyof typeof singleDigitWords];
+				const secondDigit = singleDigitWords[secondDigitWord as keyof typeof singleDigitWords];
+				const seatNumber = `${firstDigit}${secondDigit}`;
+				
+				// Only valid seat numbers (10-66 typically)
+				const num = parseInt(seatNumber);
+				if (num >= 10 && num <= 66) {
+					const pattern = new RegExp(
+						`\\b${firstDigitWord}\\s+${secondDigitWord}\\s+([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|he|we|me|a|ay|ate|eight|the|for|four)\\b`,
+						"gi"
+					);
+					cleaned = cleaned.replace(pattern, (_match, letter) => {
+						const normalizedLetter = seatLetterMap[letter.toLowerCase()] || letter.toUpperCase();
+						return `${seatNumber}${normalizedLetter}`;
+					});
+				}
+			});
+		});
+		
 		// Convert number words to digits (with seat letters)
 		// e.g., "thirty two B" → "32B", "fifteen C" → "15C"
 		for (const [word, digit] of Object.entries(numberWords)) {
 			// Match number word followed by optional seat letter
 			const regex = new RegExp(
-				`\\b${word}\\s+([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|a|ay)?\\b`,
+				`\\b${word}\\s+([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|he|we|me|a|ay|ate|eight|the|for|four)?\\b`,
 				"gi"
 			);
 			cleaned = cleaned.replace(regex, (_match, letter) => {
@@ -7093,14 +7395,56 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 			});
 		}
 
+		// CRITICAL: Normalize hyphenated and spaced seat formats
+		// "5-2-B" → "52B", "52-B" → "52B", "5 2 B" → "52B"
+		cleaned = cleaned.replace(
+			/\b(\d)-(\d)-([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|he|we|me|a|ay|ate|eight|the|for|four)\b/gi,
+			(_match, d1, d2, letter) => {
+				const normalizedLetter = seatLetterMap[letter.toLowerCase()] || letter.toUpperCase();
+				return `${d1}${d2}${normalizedLetter}`;
+			}
+		);
+		cleaned = cleaned.replace(
+			/\b(\d{1,2})-([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|he|we|me|a|ay|ate|eight|the|for|four)\b/gi,
+			(_match, num, letter) => {
+				const normalizedLetter = seatLetterMap[letter.toLowerCase()] || letter.toUpperCase();
+				return `${num}${normalizedLetter}`;
+			}
+		);
+		
+		// CRITICAL: Handle "digit space digit space letter" format
+		// "5 2 B" → "52B" (but only for valid seat numbers)
+		cleaned = cleaned.replace(
+			/\b(\d)\s+(\d)\s+([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|he|we|me|a|ay|ate|eight|the|for|four)\b/gi,
+			(_match, d1, d2, letter) => {
+				const seatNum = parseInt(`${d1}${d2}`);
+				// Only valid seat numbers (10-66 typically)
+				if (seatNum >= 10 && seatNum <= 66) {
+					const normalizedLetter = seatLetterMap[letter.toLowerCase()] || letter.toUpperCase();
+					return `${d1}${d2}${normalizedLetter}`;
+				}
+				return _match;
+			}
+		);
+		
 		// Fix common number word misrecognitions with seat letters
 		// Handle variations like "thirty to B" → "32B", "thirty too B" → "32B"
 		cleaned = cleaned.replace(
-			/\bthirty\s+(to|too|two)\s+([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|a|ay)\b/gi,
+			/\bthirty\s+(to|too|two)\s+([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|he|we|me|a|ay|ate|eight|the|for|four)\b/gi,
 			(_match, _variant, letter) => {
 				const normalizedLetter =
 					seatLetterMap[letter?.toLowerCase()] || letter?.toUpperCase() || "B";
 				return `32${normalizedLetter}`;
+			}
+		);
+		
+		// EXPANDED: Handle "fifty to/too/two" variations
+		cleaned = cleaned.replace(
+			/\bfifty\s+(to|too|two)\s+([A-Fa-f]|be|bee|sea|see|de|dee|ef|eve|he|we|me|a|ay|ate|eight|the|for|four)\b/gi,
+			(_match, _variant, letter) => {
+				const normalizedLetter =
+					seatLetterMap[letter?.toLowerCase()] || letter?.toUpperCase() || "B";
+				return `52${normalizedLetter}`;
 			}
 		);
 

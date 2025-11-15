@@ -1,0 +1,1831 @@
+import { useState, useRef, useEffect } from "react";
+import { Mic, Loader2 } from "lucide-react";
+import { VoiceService } from "../../lib/voice";
+import {
+  parseRequest,
+  type ParsedIntent,
+  getParsePerformanceStats,
+} from "../../lib/ai";
+import { useTasks } from "../../hooks/useTasks";
+import { useInventory } from "../../hooks/useInventory";
+import { mapTaskItemToInventory } from "../../lib/itemMapping";
+import { rawDGTest } from "../../lib/dgSmoke";
+import { config } from "../../lib/config";
+import { TTSService } from "../../lib/ttsService";
+import { generateTaskScript } from "../../lib/taskScriptGenerator";
+import { useToast } from "../shared/ToastContainer";
+import { MicrophoneTest } from "./MicrophoneTest";
+
+function VoiceInput() {
+  const [isListening, setIsListening] = useState(false);
+  const [isMicReady, setIsMicReady] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
+  const [parsedIntent, setParsedIntent] = useState<ParsedIntent | null>(null);
+  const [showMicTest, setShowMicTest] = useState(false);
+
+  const { createTask, tasks, cancelTaskItem, checkTaskItem } = useTasks();
+  const { checkStock, reserveItemForTask } = useInventory();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
+  const voiceServiceRef = useRef<VoiceService | null>(null);
+  const wakeWordCallbackRef = useRef<((text: string) => void) | null>(null);
+  const wakeWordOnlyCallbackRef = useRef<((text: string) => void) | null>(null);
+  const ttsServiceRef = useRef<TTSService | null>(null);
+  const hasAutoCreatedRef = useRef<boolean>(false); // Track if we've auto-created for this parsedIntent
+  const timeoutsRef = useRef<Set<NodeJS.Timeout>>(new Set()); // Track all timeouts for cleanup
+  const timingRef = useRef<{
+    voiceRecognitionStart?: number;
+    voiceRecognitionEnd?: number;
+    aiParsingStart?: number;
+    aiParsingEnd?: number;
+    taskCreationStart?: number;
+    taskCreationEnd?: number;
+  }>({});
+
+  useEffect(() => {
+    console.log("🎤 VoiceInput component mounted - initializing VoiceService");
+    voiceServiceRef.current = new VoiceService();
+    ttsServiceRef.current = new TTSService();
+
+    // Resume AudioContext on first user interaction (required for browser autoplay policy)
+    let hasResumed = false;
+    const events = ["click", "touchstart", "keydown"];
+
+    const resumeOnInteraction = async () => {
+      if (!hasResumed && ttsServiceRef.current) {
+        try {
+          await ttsServiceRef.current.resumeAudioContextOnUserInteraction();
+          console.log("✅ AudioContext resumed on user interaction");
+          hasResumed = true; // Only set to true if successful
+
+          // Remove all event listeners after successful resume
+          events.forEach((event) => {
+            document.removeEventListener(event, resumeOnInteraction);
+          });
+        } catch (error) {
+          console.warn(
+            "⚠️ Failed to resume AudioContext on user interaction:",
+            error
+          );
+          // Don't set hasResumed = true, so it will try again on next interaction
+        }
+      }
+    };
+
+    // Listen for user interactions (click, touch, keypress)
+    // Don't use {once: true} so it keeps trying until successful
+    events.forEach((event) => {
+      document.addEventListener(event, resumeOnInteraction, {
+        passive: true,
+      });
+    });
+
+    // Define the wake word callback
+    const onWakeWordDetected = async (
+      text: string,
+      selectedAlternative?: any
+    ) => {
+      // PRODUCTION: Validate that we have actual content (not just wake word)
+      const trimmedText = text.trim();
+
+      // OPTIMIZATION: Handle low-confidence signal (empty transcript OR keepWakeWordActive flag)
+      // When voice.ts passes an empty transcript or keepWakeWordActive flag, it means recognition failed quality checks
+      const shouldRetry =
+        trimmedText.length === 0 ||
+        trimmedText === "" ||
+        selectedAlternative?.keepWakeWordActive === true;
+
+      if (shouldRetry) {
+        console.warn(
+          "⚠️ Low confidence or failed quality checks - requesting repeat",
+          {
+            emptyTranscript: trimmedText.length === 0,
+            keepWakeWordActive: selectedAlternative?.keepWakeWordActive,
+            transcript: trimmedText,
+          }
+        );
+
+        // Play TTS feedback asking user to repeat
+        if (ttsServiceRef.current) {
+          try {
+            await ttsServiceRef.current.speak(
+              "I couldn't hear that, please repeat",
+              {
+                rate: 1.0,
+                onEnd: () => {
+                  console.log("✅ Low confidence TTS feedback complete");
+                },
+                onError: (error) => {
+                  console.error("❌ TTS Error for low confidence:", error);
+                },
+              }
+            );
+          } catch (ttsError) {
+            console.warn("⚠️ TTS failed for low confidence:", ttsError);
+          }
+        }
+
+        // Reset state and ensure listening continues
+        setTranscript("");
+        setParsedIntent(null);
+        setIsListening(false);
+        setIsMicReady(false);
+        hasAutoCreatedRef.current = false;
+
+        // Restart continuous listening (wake word stays active per keepWakeWordActive flag)
+        if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+          setTimeout(() => {
+            if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+              voiceServiceRef.current.ensureContinuousListening(
+                wakeWordCallbackRef.current,
+                wakeWordOnlyCallbackRef.current || undefined
+              );
+            }
+          }, 100);
+        }
+
+        return; // Exit early - don't process failed transcript
+      }
+
+      // Check if it's empty or only contains wake word
+      const isOnlyWakeWord =
+        !trimmedText ||
+        trimmedText.length === 0 ||
+        /^(skymate|sky\s+mate|sky-mate|sky\s+make)(\s*|\.|,|!|\?)*$/i.test(
+          trimmedText
+        ) ||
+        trimmedText
+          .replace(/^(skymate|sky\s+mate|sky-mate|sky\s+make)\s*/i, "")
+          .trim().length === 0;
+
+      if (isOnlyWakeWord) {
+        console.log("⏸️ Wake word only detected, waiting for request...", text);
+        // Don't process - just wait for the actual request
+        // The timeout will handle resetting if no speech comes
+        return;
+      }
+
+      // Wake word detected with actual request - process it
+      console.log("🎯 Processing request after wake word:", text);
+
+      // TIMING: Reset and mark voice recognition complete
+      timingRef.current = {
+        voiceRecognitionStart: Date.now(), // Approximate - actual start is when wake word detected
+        voiceRecognitionEnd: Date.now(),
+      };
+      console.log(
+        "⏱️ TIMING: Voice recognition complete, starting measurement"
+      );
+
+      setTranscript(text);
+      setIsListening(true);
+      setIsMicReady(true);
+
+      // Check if it starts with seat number pattern (wake word already removed)
+      // ENHANCED: Also accept just a seat number without space (e.g., "30C" or "30C ice cream")
+      const seatNumberPattern = /^(\d+[A-F])(\s+|$)/i;
+      const startsWithSeatNumber = seatNumberPattern.test(trimmedText);
+
+      // PRODUCTION: Check if this is a task command (e.g., "remind me of Task 1" or "show tasks")
+
+      // Pattern for task range with multiple formats:
+      // 1. "task 1 to 4", "task 1 through 4", "task 1-4"
+      // 2. "task 1:00 4:00" (speech recognition interprets "1 to 4" as times)
+      // 3. "past 1:00 until 4:00" (speech recognition mishears "task" as "past")
+      // 4. "task 1 2 3" (without "to") - FIXED: Handle missing "to"
+      // Use \s+ for robust whitespace handling
+
+      // First, try to fix time misrecognitions: "1:00 to 3:00" → "1 to 3"
+      let normalizedText = trimmedText.replace(/(\d+):00/g, "$1");
+
+      const taskRangePattern =
+        /\b(remind|show|display|list|tell|what).*?\b(Task|task|past)s?\s+(\d+)\s+(?:(?:to|through|-|until|and)\s+)?(\d+)(?:\b|$)/i;
+      const taskRangeMatch = normalizedText.match(taskRangePattern);
+
+      // Debug: Log pattern matching
+      console.log(`🔍 Task range pattern test:`, {
+        original: trimmedText,
+        normalized: normalizedText,
+        rangeMatch: taskRangeMatch
+          ? {
+              fullMatch: taskRangeMatch[0],
+              start: taskRangeMatch[3],
+              end: taskRangeMatch[4],
+              allGroups: taskRangeMatch,
+            }
+          : "NO MATCH",
+      });
+
+      // Pattern for single task number
+      // Also handles "past" as a common misrecognition of "task"
+      // Use normalized text (without :00)
+      const taskCommandWithNumberPattern =
+        /\b(remind|show|display|list|tell|what).*?\b(Task|task|past)\s+(\d+)\b/i;
+      const taskCommandWithNumberMatch = normalizedText.match(
+        taskCommandWithNumberPattern
+      );
+
+      // Also check for general task commands without number (e.g., "show tasks", "list tasks")
+      const taskCommandGeneralPattern =
+        /\b(remind|show|display|list|tell|what).*?\b(tasks?)\b/i;
+      const taskCommandGeneralMatch = normalizedText.match(
+        taskCommandGeneralPattern
+      );
+
+      // NEW: Check for meal description commands (e.g., "describe chicken meal", "describe beef")
+      const describeMealPattern =
+        /\b(describe|tell me about|what's in|what is in|info about|information about)\s+(?:the\s+)?(.+?)(?:\s+meal)?$/i;
+      const describeMealMatch = normalizedText.match(describeMealPattern);
+
+      // Handle meal description requests
+      if (describeMealMatch) {
+        console.log("🍽️ Meal description request detected:", {
+          command: describeMealMatch[1],
+          mealName: describeMealMatch[2],
+        });
+
+        const mealName = describeMealMatch[2].trim();
+
+        // Import meal ingredients data
+        const { getMealIngredients, formatMealDescription } = await import(
+          "../../data/mealIngredients"
+        );
+
+        const mealInfo = getMealIngredients(mealName);
+
+        if (mealInfo) {
+          console.log(`✅ Found meal information for: ${mealInfo.name}`);
+
+          // Play TTS with meal description
+          if (ttsServiceRef.current) {
+            try {
+              const description = formatMealDescription(mealInfo);
+              console.log(`🔊 Speaking meal description: ${description}`);
+
+              await ttsServiceRef.current.speak(description, {
+                rate: 1.0,
+                onEnd: () => {
+                  console.log("✅ Meal description complete");
+                },
+                onError: (error) => {
+                  console.error("❌ TTS Error for meal description:", error);
+                },
+              });
+            } catch (error) {
+              console.error("❌ Error playing meal description:", error);
+            }
+          }
+
+          // Reset state and restart listening
+          setTranscript("");
+          setParsedIntent(null);
+          setIsListening(false);
+          setIsMicReady(false);
+          hasAutoCreatedRef.current = false;
+
+          // Restart continuous listening
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
+        } else {
+          console.warn(`⚠️ No meal information found for: ${mealName}`);
+
+          // Play TTS with "not found" message
+          if (ttsServiceRef.current) {
+            try {
+              await ttsServiceRef.current.speak(
+                `Sorry, I don't have information about ${mealName}. Available meals include chicken, beef, fish, vegetarian, and vegan.`,
+                {
+                  rate: 1.0,
+                }
+              );
+            } catch (error) {
+              console.warn("⚠️ TTS failed:", error);
+            }
+          }
+
+          // Reset state and restart listening
+          setTranscript("");
+          setParsedIntent(null);
+          setIsListening(false);
+          setIsMicReady(false);
+          hasAutoCreatedRef.current = false;
+
+          // Restart continuous listening
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
+        }
+
+        return; // Exit early - don't process as regular request
+      }
+
+      if (taskRangeMatch) {
+        // This is a task range command - handle TTS for multiple tasks
+        const startTask = parseInt(taskRangeMatch[3]);
+        const endTask = parseInt(taskRangeMatch[4]);
+        console.log(
+          `📋 Task range command detected: Task ${startTask} to ${endTask}`
+        );
+
+        // PRODUCTION: Early check - if no tasks exist, skip GPT call and database operations
+        if (tasks.length === 0) {
+          const noTasksMessage = "There are no tasks.";
+          console.log("⏸️ No tasks available, skipping GPT call");
+
+          if (ttsServiceRef.current) {
+            await ttsServiceRef.current.speak(noTasksMessage, {
+              rate: 1.0,
+              pitch: 1.0,
+              volume: 1.0,
+              onEnd: () => {
+                console.log("✅ No tasks message spoken");
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error:", error);
+              },
+            });
+          } else {
+            showInfo("No Tasks", noTasksMessage);
+          }
+
+          setParsedIntent(null);
+
+          // Ensure continuous listening restarts
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            setTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 200);
+          }
+          return; // Early return - no database or GPT calls
+        }
+
+        setIsParsing(true);
+        try {
+          // Generate script using GPT for task range (only called if tasks exist)
+          const script = await generateTaskScript(tasks, {
+            startTask,
+            endTask,
+          });
+
+          // Speak the script
+          if (ttsServiceRef.current) {
+            await ttsServiceRef.current.speak(script, {
+              rate: 1.0,
+              pitch: 1.0,
+              volume: 1.0,
+              onEnd: () => {
+                console.log("✅ Task range reminder spoken successfully");
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error:", error);
+                showError(
+                  "TTS Error",
+                  `Failed to speak task reminder: ${error.message}`
+                );
+              },
+            });
+          } else {
+            // Fallback: just show the script
+            showInfo("Task Reminder", script);
+          }
+
+          // Don't create a task for task commands
+          setParsedIntent(null);
+        } catch (error: any) {
+          console.error("Failed to generate/speak task script:", error);
+          showError(
+            "Task Reminder Failed",
+            `Failed to generate task reminder: ${
+              error.message || "Unknown error"
+            }`
+          );
+        } finally {
+          setIsParsing(false);
+          setIsListening(false);
+          setIsMicReady(false);
+
+          // Azure Speech Service will auto-restart via its internal mechanism
+        }
+        return; // Early return for task range commands
+      } else if (taskCommandWithNumberMatch) {
+        // This is a task command with specific number - handle TTS
+        const taskNumber = parseInt(taskCommandWithNumberMatch[3]);
+        console.log(`📋 Task command detected: Task ${taskNumber}`);
+
+        // PRODUCTION: Early check - if no tasks exist, skip GPT call and database operations
+        if (tasks.length === 0) {
+          const noTasksMessage = "There are no tasks.";
+          console.log("⏸️ No tasks available, skipping GPT call");
+
+          if (ttsServiceRef.current) {
+            await ttsServiceRef.current.speak(noTasksMessage, {
+              rate: 1.0,
+              pitch: 1.0,
+              volume: 1.0,
+              onEnd: () => {
+                console.log("✅ No tasks message spoken");
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error:", error);
+              },
+            });
+          } else {
+            showInfo("No Tasks", noTasksMessage);
+          }
+
+          setParsedIntent(null);
+
+          // Azure Speech Service will auto-restart via its internal mechanism
+          return; // Early return - no database or GPT calls
+        }
+
+        setIsParsing(true);
+        try {
+          // Generate script using GPT (only called if tasks exist)
+          const script = await generateTaskScript(tasks, { taskNumber });
+
+          // Speak the script
+          if (ttsServiceRef.current) {
+            await ttsServiceRef.current.speak(script, {
+              rate: 1.0,
+              pitch: 1.0,
+              volume: 1.0,
+              onEnd: () => {
+                console.log("✅ Task reminder spoken successfully");
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error:", error);
+                showError(
+                  "TTS Error",
+                  `Failed to speak task reminder: ${error.message}`
+                );
+              },
+            });
+          } else {
+            // Fallback: just show the script
+            showInfo("Task Reminder", script);
+          }
+
+          // Don't create a task for task commands
+          setParsedIntent(null);
+        } catch (error: any) {
+          console.error("Failed to generate/speak task script:", error);
+          showError(
+            "Task Reminder Failed",
+            `Failed to generate task reminder: ${
+              error.message || "Unknown error"
+            }`
+          );
+        } finally {
+          setIsParsing(false);
+          setIsListening(false);
+          setIsMicReady(false);
+
+          // Azure Speech Service will auto-restart via its internal mechanism
+        }
+        return; // Early return for task commands
+      } else if (taskCommandGeneralMatch) {
+        // This is a general task command (no number) - show all tasks
+        console.log(`📋 General task command detected: show/list tasks`);
+
+        // PRODUCTION: Early check - if no pending tasks exist, skip GPT call and database operations
+        const pendingTasks = tasks.filter((t) => t.status === "pending");
+        if (pendingTasks.length === 0) {
+          const noTasksMessage = "There are no tasks.";
+          console.log("⏸️ No pending tasks available, skipping GPT call");
+
+          if (ttsServiceRef.current) {
+            await ttsServiceRef.current.speak(noTasksMessage, {
+              rate: 1.0,
+              pitch: 1.0,
+              volume: 1.0,
+              onEnd: () => {
+                console.log("✅ No tasks message spoken");
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error:", error);
+              },
+            });
+          } else {
+            showInfo("No Tasks", noTasksMessage);
+          }
+
+          setParsedIntent(null);
+
+          // Azure Speech Service will auto-restart via its internal mechanism
+          return; // Early return - no database or GPT calls
+        }
+
+        setIsParsing(true);
+        try {
+          // Generate script for all pending tasks (only called if tasks exist)
+          const script = await generateTaskScript(tasks, { allTasks: false }); // Show pending tasks
+
+          // Speak the script
+          if (ttsServiceRef.current) {
+            await ttsServiceRef.current.speak(script, {
+              rate: 1.0,
+              pitch: 1.0,
+              volume: 1.0,
+              onEnd: () => {
+                console.log("✅ Task reminder spoken successfully");
+              },
+              onError: (error) => {
+                console.error("❌ TTS Error:", error);
+                showError(
+                  "TTS Error",
+                  `Failed to speak task reminder: ${error.message}`
+                );
+              },
+            });
+          } else {
+            // Fallback: just show the script
+            showInfo("Task Reminder", script);
+          }
+
+          // Don't create a task for task commands
+          setParsedIntent(null);
+        } catch (error: any) {
+          console.error("Failed to generate/speak task script:", error);
+          showError(
+            "Task Reminder Failed",
+            `Failed to generate task reminder: ${
+              error.message || "Unknown error"
+            }`
+          );
+        } finally {
+          setIsParsing(false);
+          setIsListening(false);
+          setIsMicReady(false);
+
+          // Azure Speech Service will auto-restart via its internal mechanism
+        }
+        return; // Early return for task commands
+      }
+
+      // ==========================================
+      // CANCELLATION DETECTION (PRIORITY CHECK)
+      // ==========================================
+      // Check FIRST if this is a cancellation request
+      // This comes from wake word flow, so it won't have "skymate" prefix
+      // Example: "cancel 1A chicken" or "cancel one a chicken" (skymate was already the wake word)
+
+      // Normalize speech-to-text seat variations
+      // "one a" → "1A", "fifteen c" → "15C", etc.
+      let normalizedForCancel = trimmedText
+        .replace(/\bone\s+([a-f])\b/gi, "1$1")
+        .replace(/\btwo\s+([a-f])\b/gi, "2$1")
+        .replace(/\bthree\s+([a-f])\b/gi, "3$1")
+        .replace(/\bfour\s+([a-f])\b/gi, "4$1")
+        .replace(/\bfive\s+([a-f])\b/gi, "5$1")
+        .replace(/\bsix\s+([a-f])\b/gi, "6$1")
+        .replace(/\bseven\s+([a-f])\b/gi, "7$1")
+        .replace(/\beight\s+([a-f])\b/gi, "8$1")
+        .replace(/\bnine\s+([a-f])\b/gi, "9$1")
+        .replace(/\bten\s+([a-f])\b/gi, "10$1")
+        .replace(/\beleven\s+([a-f])\b/gi, "11$1")
+        .replace(/\btwelve\s+([a-f])\b/gi, "12$1")
+        .replace(/\bthirteen\s+([a-f])\b/gi, "13$1")
+        .replace(/\bfourteen\s+([a-f])\b/gi, "14$1")
+        .replace(/\bfifteen\s+([a-f])\b/gi, "15$1")
+        .replace(/\bsixteen\s+([a-f])\b/gi, "16$1")
+        .replace(/\bseventeen\s+([a-f])\b/gi, "17$1")
+        .replace(/\beighteen\s+([a-f])\b/gi, "18$1")
+        .replace(/\bnineteen\s+([a-f])\b/gi, "19$1")
+        .replace(/\btwenty\s+([a-f])\b/gi, "20$1");
+
+      // UPDATED: Make item optional - "cancel 62B" defaults to canceling entire order
+      const cancelPattern = /^cancel\s+([a-z]?\d+[a-z]?)(?:\s+(.+))?$/i;
+      const cancelMatch = normalizedForCancel.match(cancelPattern);
+
+      if (cancelMatch) {
+        const seatToCancel = cancelMatch[1];
+        const itemToCancel = (cancelMatch[2] || "").trim();
+
+        // VALIDATION: Check if seat format is valid (e.g., "62A", not "62ab")
+        const validSeatFormat = /^\d+[A-F]$/i;
+        if (!validSeatFormat.test(seatToCancel)) {
+          console.warn(`⚠️ Invalid seat format detected: "${seatToCancel}"`);
+
+          // Play TTS feedback for invalid command
+          if (ttsServiceRef.current) {
+            try {
+              await ttsServiceRef.current.speak(
+                "Couldn't quite hear that, please repeat",
+                { rate: 1.0 }
+              );
+            } catch (error) {
+              console.warn("⚠️ TTS failed:", error);
+            }
+          }
+
+          // Reset and restart listening
+          setIsParsing(false);
+          setIsListening(false);
+          setIsMicReady(false);
+          setParsedIntent(null);
+
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
+
+          return; // Early return for invalid commands
+        }
+
+        // Check if this is a request to cancel entire order
+        const cancelAllKeywords = /^(order|all|everything|task)$/i;
+        const isCancelAll = cancelAllKeywords.test(itemToCancel);
+
+        console.log(`🚫 Cancellation request detected (normalized)`, {
+          original: trimmedText,
+          normalized: normalizedForCancel,
+          seat: seatToCancel,
+          item: itemToCancel,
+          cancelAll: isCancelAll,
+        });
+
+        setIsParsing(true);
+
+        try {
+          let result;
+
+          if (isCancelAll) {
+            // Cancel entire order - use special keyword to delete whole task
+            result = await cancelTaskItem(seatToCancel, "__CANCEL_ALL__");
+          } else {
+            // Cancel specific item
+            result = await cancelTaskItem(seatToCancel, itemToCancel);
+          }
+
+          if (result.success) {
+            console.log(`✅ Cancellation successful`, result);
+
+            // Provide TTS feedback
+            if (ttsServiceRef.current) {
+              try {
+                if (result.deletedTask) {
+                  if (isCancelAll) {
+                    await ttsServiceRef.current.speak(
+                      `Cancelled entire order for ${seatToCancel}`,
+                      { rate: 1.0 }
+                    );
+                  } else {
+                    await ttsServiceRef.current.speak("Cancel success", {
+                      rate: 1.0,
+                    });
+                  }
+                } else {
+                  await ttsServiceRef.current.speak(
+                    `Cancelled ${itemToCancel} for ${seatToCancel}. Remaining: ${result.remainingItems}`,
+                    { rate: 1.0 }
+                  );
+                }
+              } catch (error) {
+                console.warn("⚠️ TTS failed:", error);
+              }
+            }
+
+            showSuccess(
+              isCancelAll ? "Order Cancelled" : "Item Cancelled",
+              result.message || "Cancellation successful"
+            );
+          } else {
+            console.warn(`⚠️ Cancellation failed:`, result.message);
+
+            // Provide TTS feedback - use "couldn't quite hear that" for consistency
+            if (ttsServiceRef.current) {
+              try {
+                await ttsServiceRef.current.speak(
+                  "Couldn't quite hear that, please repeat",
+                  { rate: 1.0 }
+                );
+              } catch (error) {
+                console.warn("⚠️ TTS failed:", error);
+              }
+            }
+
+            showWarning(
+              "Cancellation Failed",
+              result.message || "Item not found"
+            );
+          }
+        } catch (error: any) {
+          console.error("❌ Cancellation error:", error);
+          showError(
+            "Cancellation Error",
+            error.message || "Failed to cancel item"
+          );
+
+          // Provide TTS feedback - use "couldn't quite hear that" for consistency
+          if (ttsServiceRef.current) {
+            try {
+              await ttsServiceRef.current.speak(
+                "Couldn't quite hear that, please repeat",
+                { rate: 1.0 }
+              );
+            } catch (ttsError) {
+              console.warn("⚠️ TTS failed:", ttsError);
+            }
+          }
+        } finally {
+          setIsParsing(false);
+          setIsListening(false);
+          setIsMicReady(false);
+          setParsedIntent(null);
+
+          // Restart continuous listening
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
+        }
+
+        return; // Early return for cancellation commands
+      }
+      // ==========================================
+      // END CANCELLATION DETECTION
+      // ==========================================
+
+      // ==========================================
+      // CHECK OFF DETECTION (PRIORITY CHECK)
+      // ==========================================
+      // Check if this is a check-off request (complete task/item)
+      // Example: "check 10A off" or "check 10A chicken" or "complete 52B"
+
+      // Use the same normalization as cancellation
+      // UPDATED: Support both "check" and "complete" commands, make item optional
+      const checkPattern =
+        /^(?:check|complete)\s+([a-z]?\d+[a-z]?)(?:\s+(.+))?$/i;
+      const checkMatch = normalizedForCancel.match(checkPattern);
+
+      if (checkMatch) {
+        const seatToCheck = checkMatch[1];
+        const itemToCheck = (checkMatch[2] || "").trim();
+
+        // VALIDATION: Check if seat format is valid (e.g., "62A", not "62ab")
+        const validSeatFormat = /^\d+[A-F]$/i;
+        if (!validSeatFormat.test(seatToCheck)) {
+          console.warn(`⚠️ Invalid seat format detected: "${seatToCheck}"`);
+
+          // Play TTS feedback for invalid command
+          if (ttsServiceRef.current) {
+            try {
+              await ttsServiceRef.current.speak(
+                "Couldn't quite hear that, please repeat",
+                { rate: 1.0 }
+              );
+            } catch (error) {
+              console.warn("⚠️ TTS failed:", error);
+            }
+          }
+
+          // Reset and restart listening
+          setIsParsing(false);
+          setIsListening(false);
+          setIsMicReady(false);
+          setParsedIntent(null);
+
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
+
+          return; // Early return for invalid commands
+        }
+
+        // Check if this is a request to check off entire order
+        const checkAllKeywords = /^(off|all|everything|order|task|done)$/i;
+        const isCheckAll = checkAllKeywords.test(itemToCheck);
+
+        console.log(`✅ Check-off request detected (normalized)`, {
+          original: trimmedText,
+          normalized: normalizedForCancel,
+          seat: seatToCheck,
+          item: itemToCheck,
+          checkAll: isCheckAll,
+        });
+
+        setIsParsing(true);
+
+        try {
+          let result;
+
+          if (isCheckAll) {
+            // Complete entire order
+            result = await checkTaskItem(seatToCheck, "__CHECK_ALL__");
+          } else {
+            // Complete specific item
+            result = await checkTaskItem(seatToCheck, itemToCheck);
+          }
+
+          if (result.success) {
+            console.log(`✅ Check-off successful`, result);
+
+            // Provide TTS feedback
+            if (ttsServiceRef.current) {
+              try {
+                if (result.completedTask) {
+                  if (isCheckAll) {
+                    await ttsServiceRef.current.speak(
+                      `Order completed for ${seatToCheck}`,
+                      { rate: 1.0 }
+                    );
+                  } else {
+                    await ttsServiceRef.current.speak(
+                      `${itemToCheck} completed for ${seatToCheck}`,
+                      { rate: 1.0 }
+                    );
+                  }
+                } else {
+                  await ttsServiceRef.current.speak(
+                    `${itemToCheck} completed for ${seatToCheck}. Remaining: ${result.remainingItems}`,
+                    { rate: 1.0 }
+                  );
+                }
+              } catch (error) {
+                console.warn("⚠️ TTS failed:", error);
+              }
+            }
+
+            showSuccess(
+              isCheckAll ? "Order Completed" : "Item Completed",
+              result.message || "Check-off successful"
+            );
+          } else {
+            console.warn(`⚠️ Check-off failed:`, result.message);
+
+            // Provide TTS feedback - use "couldn't quite hear that" for consistency
+            if (ttsServiceRef.current) {
+              try {
+                await ttsServiceRef.current.speak(
+                  "Couldn't quite hear that, please repeat",
+                  { rate: 1.0 }
+                );
+              } catch (error) {
+                console.warn("⚠️ TTS failed:", error);
+              }
+            }
+
+            showWarning("Check-off Failed", result.message || "Item not found");
+          }
+        } catch (error: any) {
+          console.error("❌ Check-off error:", error);
+          showError(
+            "Check-off Error",
+            error.message || "Failed to check off item"
+          );
+
+          // Provide TTS feedback - use "couldn't quite hear that" for consistency
+          if (ttsServiceRef.current) {
+            try {
+              await ttsServiceRef.current.speak(
+                "Couldn't quite hear that, please repeat",
+                { rate: 1.0 }
+              );
+            } catch (ttsError) {
+              console.warn("⚠️ TTS failed:", ttsError);
+            }
+          }
+        } finally {
+          setIsParsing(false);
+          setIsListening(false);
+          setIsMicReady(false);
+          setParsedIntent(null);
+
+          // Restart continuous listening
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            createTimeout(() => {
+              if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                voiceServiceRef.current.ensureContinuousListening(
+                  wakeWordCallbackRef.current,
+                  wakeWordOnlyCallbackRef.current || undefined
+                );
+              }
+            }, 100);
+          }
+        }
+
+        return; // Early return for check-off commands
+      }
+      // ==========================================
+      // END CHECK OFF DETECTION
+      // ==========================================
+
+      // If it doesn't start with seat number, check for wake word
+      let textToParse: string;
+      if (!startsWithSeatNumber) {
+        // Accept: skymate, sky mate, sky-mate, sky make (common misrecognitions)
+        const skymatePattern = /^(skymate|sky\s+mate|sky-mate|sky\s+make)\s+/i;
+
+        if (!skymatePattern.test(trimmedText)) {
+          // If it doesn't start with "Skymate" or a variant, don't process it
+          console.log(
+            'Transcript does not start with "Skymate" or variant, ignoring:',
+            text
+          );
+          setParsedIntent(null);
+          return;
+        }
+
+        // Remove "Skymate" prefix (or variant) and process the rest
+        const normalizedText = trimmedText
+          .replace(/^(skymate|sky\s+mate|sky-mate|sky\s+make)\s+/i, "")
+          .trim();
+        console.log("Original:", text, "| Processed:", normalizedText);
+        textToParse = normalizedText;
+      } else {
+        // Already starts with seat number, use as-is
+        textToParse = trimmedText;
+        console.log("Text already has seat number, using as-is:", textToParse);
+      }
+
+      // PERFORMANCE OPTIMIZATION: Restart listening immediately in parallel with GPT parsing
+      // This allows user to say "skymate" again without waiting for parsing to complete
+      setIsListening(false);
+      setIsMicReady(false);
+
+      if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+        createTimeout(() => {
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            voiceServiceRef.current.ensureContinuousListening(
+              wakeWordCallbackRef.current,
+              wakeWordOnlyCallbackRef.current || undefined
+            );
+            console.log(
+              "✅ Continuous listening restarted immediately (parallel with parsing)"
+            );
+          }
+        }, 100);
+      }
+
+      // Parse with AI in background (non-blocking)
+      setIsParsing(true);
+
+      // TIMING: Mark AI parsing start
+      timingRef.current.aiParsingStart = Date.now();
+
+      // Run parsing asynchronously without blocking
+      parseRequest(textToParse)
+        .then((intent) => {
+          // TIMING: Mark AI parsing complete
+          timingRef.current.aiParsingEnd = Date.now();
+
+          setParsedIntent(intent);
+          setIsParsing(false);
+        })
+        .catch((error: any) => {
+          console.error("Parsing failed:", error);
+          const errorMessage =
+            error?.message ||
+            "Failed to process your request. Please try again.";
+          showWarning("Parsing Error", errorMessage);
+          setParsedIntent({
+            seat: "unknown",
+            type: "assistance",
+            priority: "normal",
+            suggestedResponse: "Please review and create task manually.",
+          });
+          setIsParsing(false);
+        });
+    };
+
+    const onWakeWordOnly = (_text: string) => {
+      // Optional: callback for when wake word is not detected (for debugging)
+      // Could show a subtle indicator that it's listening
+    };
+
+    // Store callbacks for later use
+    wakeWordCallbackRef.current = onWakeWordDetected;
+    wakeWordOnlyCallbackRef.current = onWakeWordOnly;
+
+    // Wake word confirmation callback - plays notification beep
+    const onWakeWordConfirmation = async () => {
+      console.log("🔔 Playing wake word confirmation beep");
+      if (ttsServiceRef.current) {
+        try {
+          await ttsServiceRef.current.playWakeWordConfirmation();
+        } catch (error) {
+          console.warn(
+            "⚠️ Wake word confirmation failed (non-critical):",
+            error
+          );
+          // If audio fails on first wake word, it will work on subsequent ones
+          // after the user has clicked/touched the page
+        }
+      }
+    };
+
+    // Start continuous listening with wake word detection
+    if (voiceServiceRef.current) {
+      voiceServiceRef.current.startContinuousListening(
+        onWakeWordDetected,
+        onWakeWordOnly,
+        onWakeWordConfirmation
+      );
+    }
+
+    return () => {
+      // Clean up event listeners
+      events.forEach((event) => {
+        document.removeEventListener(event, resumeOnInteraction);
+      });
+
+      // Clean up all timeouts
+      timeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+      timeoutsRef.current.clear();
+
+      voiceServiceRef.current?.stopListening();
+      ttsServiceRef.current?.stop();
+      ttsServiceRef.current?.dispose();
+    };
+  }, [tasks]); // Include tasks in dependencies so we have access to latest tasks
+
+  // Helper function to create tracked timeouts
+  const createTimeout = (
+    callback: () => void,
+    delay: number
+  ): NodeJS.Timeout => {
+    const timeoutId = setTimeout(() => {
+      timeoutsRef.current.delete(timeoutId);
+      callback();
+    }, delay);
+    timeoutsRef.current.add(timeoutId);
+    return timeoutId;
+  };
+
+  // Auto-create task when parsedIntent is set (and valid)
+  useEffect(() => {
+    // Only auto-create if:
+    // 1. parsedIntent exists
+    // 2. Not currently parsing
+    // 3. Seat is not "unknown" (which indicates a parsing error)
+    // 4. We haven't already auto-created for this intent
+    if (
+      parsedIntent &&
+      !isParsing &&
+      parsedIntent.seat !== "unknown" &&
+      !hasAutoCreatedRef.current
+    ) {
+      console.log("🤖 Auto-creating task for parsed intent:", parsedIntent);
+      hasAutoCreatedRef.current = true; // Mark as created to prevent duplicates
+      handleCreateTask();
+    }
+
+    // Reset the flag when parsedIntent changes or is cleared
+    if (!parsedIntent) {
+      hasAutoCreatedRef.current = false;
+    }
+  }, [parsedIntent, isParsing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startListening = async () => {
+    console.log("🎤 Microphone button clicked - starting to listen");
+    if (!voiceServiceRef.current) {
+      console.error(
+        "❌ VoiceService is null - Web Speech API may not be supported"
+      );
+      showError(
+        "Voice Service Unavailable",
+        "Please use Chrome, Edge, or Safari browser."
+      );
+      return;
+    }
+
+    // Set listening state immediately for visual feedback
+    setIsListening(true);
+    setIsMicReady(false);
+    setTranscript("");
+    setParsedIntent(null);
+
+    // Add a small delay to ensure mic is ready before user speaks
+    // This prevents missing the first word "Seat"
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    setIsMicReady(true); // Indicate mic is ready
+
+    await voiceServiceRef.current.startListening(async (text) => {
+      // TIMING: Reset and mark voice recognition complete
+      timingRef.current = {
+        voiceRecognitionStart: Date.now(),
+        voiceRecognitionEnd: Date.now(),
+      };
+      console.log(
+        "⏱️ TIMING: Voice recognition complete (manual), starting measurement"
+      );
+
+      setTranscript(text);
+      setIsListening(false);
+      setIsMicReady(false);
+      voiceServiceRef.current?.stopListening();
+
+      // The text from VoiceService should already have the seat preserved
+      // But check if it starts with a seat number pattern (e.g., "26B needs chicken")
+      // If it does, it means the wake word was already processed
+      const trimmedText = text.trim();
+
+      // Check if it starts with seat number pattern (wake word already removed)
+      const seatNumberPattern = /^(\d+[A-F])\s+/i;
+      const startsWithSeatNumber = seatNumberPattern.test(trimmedText);
+
+      // If it doesn't start with seat number, check for wake word
+      if (!startsWithSeatNumber) {
+        // Accept: skymate, sky mate, sky-mate, sky make (common misrecognitions)
+        const skymatePattern = /^(skymate|sky\s+mate|sky-mate|sky\s+make)\s+/i;
+
+        if (!skymatePattern.test(trimmedText)) {
+          // If it doesn't start with "Skymate" or a variant, don't process it
+          console.log(
+            'Transcript does not start with "Skymate" or variant, ignoring:',
+            text
+          );
+          showWarning(
+            "Wake Word Required",
+            'Please start your request with "Skymate" (e.g., "Skymate 32B needs water")'
+          );
+          setParsedIntent(null);
+          return;
+        }
+
+        // Remove "Skymate" prefix (or variant) and process the rest
+        // Normalize all variants to "skymate" for consistency, then remove it
+        const normalizedText = trimmedText
+          .replace(/^(skymate|sky\s+mate|sky-mate|sky\s+make)\s+/i, "")
+          .trim();
+        console.log("Original:", text, "| Processed:", normalizedText);
+
+        // Use normalized text for parsing
+        var textToParse = normalizedText;
+      } else {
+        // Already starts with seat number, use as-is
+        var textToParse = trimmedText;
+        console.log("Text already has seat number, using as-is:", textToParse);
+      }
+
+      // Parse with AI
+      setIsParsing(true);
+
+      // TIMING: Mark AI parsing start
+      timingRef.current.aiParsingStart = Date.now();
+
+      try {
+        // Optional: You can provide flight context here if available
+        const intent = await parseRequest(textToParse);
+
+        // TIMING: Mark AI parsing complete
+        timingRef.current.aiParsingEnd = Date.now();
+
+        setParsedIntent(intent);
+      } catch (error: any) {
+        console.error("Parsing failed:", error);
+        // Show user-friendly error message
+        const errorMessage =
+          error?.message || "Failed to process your request. Please try again.";
+        showWarning("Parsing Error", errorMessage);
+
+        // Still show the transcript so user can manually create a task
+        setParsedIntent({
+          seat: "unknown",
+          type: "assistance",
+          priority: "normal",
+          suggestedResponse: "Please review and create task manually.",
+        });
+      } finally {
+        setIsParsing(false);
+      }
+    });
+  };
+
+  const stopListening = () => {
+    voiceServiceRef.current?.stopListening();
+    setIsListening(false);
+    setIsMicReady(false);
+  };
+
+  // Dev-only: Raw WebSocket smoke test
+  // @ts-ignore - Kept for future debugging
+  const handleSmokeTest = async () => {
+    if (!import.meta.env.DEV) return;
+
+    const apiKey = config.deepgram;
+    if (!apiKey) {
+      showError("Configuration Error", "No API key configured");
+      return;
+    }
+
+    console.log("🧪 Running raw WebSocket smoke test...");
+    try {
+      await rawDGTest(apiKey);
+      showSuccess(
+        "Test Passed",
+        "Raw WS test PASSED - browser/network/CSP is OK"
+      );
+    } catch (error: any) {
+      console.error("❌ Raw WS test FAILED:", error);
+      showError(
+        "Test Failed",
+        `Raw WS test FAILED: ${error.message}. Check browser console for details.`
+      );
+    }
+  };
+
+  // Dev-only: Show AI parsing performance stats
+  const handleShowPerformanceStats = () => {
+    if (!import.meta.env.DEV) return;
+
+    const stats = getParsePerformanceStats();
+    console.log("📊 AI Parsing Performance Stats:", stats);
+
+    if ("message" in stats) {
+      showInfo("Performance Stats", stats.message);
+    } else {
+      showInfo(
+        "🚀 AI Parsing Performance",
+        `Avg: ${stats.averageDuration} | Fast: ${stats.speedupRate} | Cache: ${stats.cacheHitRate} | Estimated speedup: ${stats.estimatedSpeedup}`
+      );
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!parsedIntent) return;
+
+    // VALIDATION: Check if item is present (reject "unknown" or missing items)
+    if (
+      !parsedIntent.item ||
+      parsedIntent.item === "unknown" ||
+      parsedIntent.item.trim() === ""
+    ) {
+      console.warn("⚠️ Task rejected: No valid item detected");
+
+      // Play audio feedback asking to repeat
+      if (ttsServiceRef.current) {
+        try {
+          await ttsServiceRef.current.speak(
+            "I couldn't hear that, please repeat",
+            {
+              rate: 1.0,
+            }
+          );
+        } catch (error) {
+          console.warn("⚠️ TTS failed:", error);
+        }
+      }
+
+      // Reset state and restart listening
+      setTranscript("");
+      setParsedIntent(null);
+      setIsListening(false);
+      setIsMicReady(false);
+      hasAutoCreatedRef.current = false;
+
+      // Restart continuous listening
+      if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+        createTimeout(() => {
+          if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+            voiceServiceRef.current.ensureContinuousListening(
+              wakeWordCallbackRef.current,
+              wakeWordOnlyCallbackRef.current || undefined
+            );
+          }
+        }, 100);
+      }
+
+      return; // Exit without creating task
+    }
+
+    // TIMING: Mark task creation start
+    timingRef.current.taskCreationStart = Date.now();
+
+    try {
+      // INVENTORY CHECK: Verify stock and reserve item before creating task
+      if (parsedIntent.item) {
+        const inventoryItemName = mapTaskItemToInventory(parsedIntent.item);
+
+        if (inventoryItemName) {
+          const stockCheck = await checkStock(inventoryItemName);
+
+          if (!stockCheck.inStock) {
+            // Play "no stock available" audio warning
+            if (ttsServiceRef.current) {
+              try {
+                await ttsServiceRef.current.speak("No stock available", {
+                  rate: 1.0,
+                });
+              } catch (error) {
+                console.warn("⚠️ TTS failed:", error);
+              }
+            }
+
+            // Don't create the task
+            showWarning(
+              "Out of Stock",
+              `${inventoryItemName} is not available`
+            );
+
+            // Reset state and restart listening
+            setTranscript("");
+            setParsedIntent(null);
+            setIsListening(false);
+            setIsMicReady(false);
+            hasAutoCreatedRef.current = false;
+
+            // Restart continuous listening
+            if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+              createTimeout(() => {
+                if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                  voiceServiceRef.current.ensureContinuousListening(
+                    wakeWordCallbackRef.current,
+                    wakeWordOnlyCallbackRef.current || undefined
+                  );
+                }
+              }, 100);
+            }
+
+            return; // Exit without creating task
+          }
+
+          // Reserve the item - move to queue and reduce main inventory
+          const reserved = await reserveItemForTask(
+            inventoryItemName,
+            parsedIntent.seat,
+            1
+          );
+
+          if (!reserved) {
+            console.error("❌ Failed to reserve item for task");
+
+            // Play audio feedback
+            if (ttsServiceRef.current) {
+              try {
+                await ttsServiceRef.current.speak(
+                  "Unable to process request, please try again",
+                  {
+                    rate: 1.0,
+                  }
+                );
+              } catch (error) {
+                console.warn("⚠️ TTS failed:", error);
+              }
+            }
+
+            showError(
+              "Reservation Failed",
+              `Could not reserve ${inventoryItemName}`
+            );
+
+            // Reset state and restart listening
+            setTranscript("");
+            setParsedIntent(null);
+            setIsListening(false);
+            setIsMicReady(false);
+            hasAutoCreatedRef.current = false;
+
+            // Restart continuous listening (keeps wake word active)
+            if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+              createTimeout(() => {
+                if (voiceServiceRef.current && wakeWordCallbackRef.current) {
+                  voiceServiceRef.current.ensureContinuousListening(
+                    wakeWordCallbackRef.current,
+                    wakeWordOnlyCallbackRef.current || undefined
+                  );
+                }
+              }, 100);
+            }
+
+            return; // Exit without creating task
+          }
+        }
+      }
+
+      // Import ContextAnalyzer from voice service to extract multiple items
+      const { VoiceService } = await import("../../lib/voice");
+
+      // Extract multiple items from the transcript
+      // Note: Transcript is already cleaned by voice service (duplicates removed, garbled text cleaned)
+      // This handles requests like "4A wants chicken and water" → creates 2 items
+      const items =
+        (VoiceService as any).extractMultipleItemsFromText?.(transcript) || [];
+
+      console.log(`🔍 Multi-item extraction: Found ${items.length} item(s)`, {
+        transcript,
+        items: items.map((i: any) => ({
+          item: i.item,
+          category: i.category,
+          score: i.score,
+        })),
+      });
+
+      // Show visual feedback for multi-item detection
+      if (items.length > 1) {
+        showInfo(
+          "Multiple Items Detected",
+          `Found ${items.length} items: ${items
+            .map((i: any) => i.item)
+            .join(", ")}`
+        );
+      }
+
+      // If we detected multiple items, create separate tasks for each
+      // Note: Due to task consolidation, these will be merged into one task automatically
+      if (items.length > 1) {
+        console.log(
+          `✅ Multiple items detected (${items.length}) - Creating consolidated task:`,
+          items.map((i: any) => i.item).join(" + ")
+        );
+
+        let tasksCreated = 0;
+        let finalConsolidatedItems = "";
+
+        // CRITICAL: Create tasks SEQUENTIALLY (not in parallel)
+        // This allows the second task to find and merge with the first task
+        for (const itemData of items) {
+          try {
+            console.log(
+              `📝 Creating task ${tasksCreated + 1}/${items.length}: ${
+                itemData.item
+              }`
+            );
+
+            const result = await createTask({
+              seat: parsedIntent.seat,
+              request: `${parsedIntent.seat} wants ${itemData.item}`,
+              type:
+                itemData.category === "meals"
+                  ? "meal"
+                  : itemData.category === "beverages"
+                  ? "beverage"
+                  : itemData.category === "comfort"
+                  ? "comfort"
+                  : "assistance",
+              item: itemData.item,
+              ...(parsedIntent.specialRequirements &&
+              parsedIntent.specialRequirements.length > 0
+                ? { specialRequirements: parsedIntent.specialRequirements }
+                : {}),
+            });
+
+            tasksCreated++;
+
+            // Store consolidated items from each task (last one will have all items)
+            if (result.consolidatedItems) {
+              console.log(
+                `📦 Task ${tasksCreated} (${itemData.item}): consolidated items = "${result.consolidatedItems}"`
+              );
+              finalConsolidatedItems = result.consolidatedItems;
+            }
+
+            console.log(
+              `✅ Task ${tasksCreated}/${items.length} created for: ${itemData.item}`
+            );
+          } catch (error) {
+            console.error(
+              `❌ Failed to create task for ${itemData.item}:`,
+              error
+            );
+          }
+        }
+
+        // TIMING: Mark task creation complete (all tasks pushed to Firebase)
+        timingRef.current.taskCreationEnd = Date.now();
+
+        // Log timing breakdown
+        const timing = timingRef.current;
+        if (
+          timing.voiceRecognitionEnd &&
+          timing.aiParsingStart &&
+          timing.aiParsingEnd &&
+          timing.taskCreationStart &&
+          timing.taskCreationEnd
+        ) {
+          const voiceRecognitionTime =
+            timing.aiParsingStart - timing.voiceRecognitionEnd;
+          const aiParsingTime = timing.aiParsingEnd - timing.aiParsingStart;
+          const taskCreationTime =
+            timing.taskCreationEnd - timing.taskCreationStart;
+          const totalTime = timing.taskCreationEnd - timing.voiceRecognitionEnd;
+
+          console.log("⏱️ TIMING BREAKDOWN:", {
+            voiceRecognition: `${voiceRecognitionTime}ms`,
+            aiParsing: `${aiParsingTime}ms`,
+            taskCreation: `${taskCreationTime}ms`,
+            total: `${totalTime}ms`,
+            breakdown: {
+              voiceRecognition: `${(
+                (voiceRecognitionTime / totalTime) *
+                100
+              ).toFixed(1)}%`,
+              aiParsing: `${((aiParsingTime / totalTime) * 100).toFixed(1)}%`,
+              taskCreation: `${((taskCreationTime / totalTime) * 100).toFixed(
+                1
+              )}%`,
+            },
+          });
+
+          // Show timing in UI
+          showInfo(
+            "⏱️ Response Time",
+            `Total: ${totalTime}ms (Voice: ${voiceRecognitionTime}ms, AI: ${aiParsingTime}ms, Task: ${taskCreationTime}ms)`
+          );
+        }
+
+        console.log(`🎉 ${tasksCreated} tasks created successfully!`);
+
+        // REWARD LEARNING: Report successful task creation
+        if (voiceServiceRef.current && tasksCreated > 0) {
+          voiceServiceRef.current.reportTaskSuccess(transcript, {
+            seat: parsedIntent.seat,
+            item: items.map((i: any) => i.item).join(", "),
+            action: parsedIntent.type,
+          });
+        }
+
+        // AUDIO CONFIRMATION: Speak the consolidated order
+        if (
+          ttsServiceRef.current &&
+          tasksCreated > 0 &&
+          finalConsolidatedItems
+        ) {
+          try {
+            console.log(
+              `🔊 Multi-item confirmation: "${finalConsolidatedItems}"`
+            );
+            // Format items list naturally: "chicken, beef, and water"
+            const itemsArray = finalConsolidatedItems.split(", ");
+            const formattedItems =
+              itemsArray.length === 2
+                ? `${itemsArray[0]} and ${itemsArray[1]}`
+                : itemsArray.length > 2
+                ? `${itemsArray.slice(0, -1).join(", ")}, and ${
+                    itemsArray[itemsArray.length - 1]
+                  }`
+                : itemsArray[0];
+
+            const confirmationMessage = `${parsedIntent.seat} wanted ${formattedItems}`;
+            console.log(`🔊 Speaking: "${confirmationMessage}"`);
+
+            await ttsServiceRef.current.speak(confirmationMessage, {
+              rate: 1.1,
+              pitch: 1.0,
+              volume: 1.0,
+            });
+
+            showSuccess(
+              "Multiple Items Created",
+              `Created task with ${tasksCreated} items for ${parsedIntent.seat}`
+            );
+          } catch (error) {
+            console.warn("⚠️ Audio confirmation failed (non-critical):", error);
+          }
+        } else {
+          showSuccess(
+            "Multiple Items Created",
+            `Created ${tasksCreated} items for ${parsedIntent.seat}`
+          );
+        }
+      } else {
+        // Single item - create one task (existing behavior)
+        const result = await createTask({
+          seat: parsedIntent.seat,
+          request: transcript,
+          type: parsedIntent.type,
+          item: parsedIntent.item,
+          ...(parsedIntent.specialRequirements &&
+          parsedIntent.specialRequirements.length > 0
+            ? { specialRequirements: parsedIntent.specialRequirements }
+            : {}),
+        });
+
+        // TIMING: Mark task creation complete (task pushed to Firebase)
+        timingRef.current.taskCreationEnd = Date.now();
+
+        // Log timing breakdown
+        const timing = timingRef.current;
+        if (
+          timing.voiceRecognitionEnd &&
+          timing.aiParsingStart &&
+          timing.aiParsingEnd &&
+          timing.taskCreationStart &&
+          timing.taskCreationEnd
+        ) {
+          const voiceRecognitionTime =
+            timing.aiParsingStart - timing.voiceRecognitionEnd;
+          const aiParsingTime = timing.aiParsingEnd - timing.aiParsingStart;
+          const taskCreationTime =
+            timing.taskCreationEnd - timing.taskCreationStart;
+          const totalTime = timing.taskCreationEnd - timing.voiceRecognitionEnd;
+
+          console.log("⏱️ TIMING BREAKDOWN:", {
+            voiceRecognition: `${voiceRecognitionTime}ms`,
+            aiParsing: `${aiParsingTime}ms`,
+            taskCreation: `${taskCreationTime}ms`,
+            total: `${totalTime}ms`,
+            breakdown: {
+              voiceRecognition: `${(
+                (voiceRecognitionTime / totalTime) *
+                100
+              ).toFixed(1)}%`,
+              aiParsing: `${((aiParsingTime / totalTime) * 100).toFixed(1)}%`,
+              taskCreation: `${((taskCreationTime / totalTime) * 100).toFixed(
+                1
+              )}%`,
+            },
+          });
+
+          // Show timing in UI
+          showInfo(
+            "⏱️ Response Time",
+            `Total: ${totalTime}ms (Voice: ${voiceRecognitionTime}ms, AI: ${aiParsingTime}ms, Task: ${taskCreationTime}ms)`
+          );
+        }
+
+        // REWARD LEARNING: Report successful task creation to VoiceService
+        // This will reward the patterns that led to this successful task
+        if (voiceServiceRef.current) {
+          // Use transcript as identifier to find the session
+          voiceServiceRef.current.reportTaskSuccess(transcript, {
+            seat: parsedIntent.seat,
+            item: parsedIntent.item,
+            action: parsedIntent.type,
+          });
+
+          console.log("🎉 Task created successfully - patterns rewarded!");
+        }
+
+        // AUDIO CONFIRMATION: Speak the order confirmation (including consolidated items)
+        if (ttsServiceRef.current && result.consolidatedItems) {
+          try {
+            console.log(
+              `🔊 Received consolidated items from createTask: "${result.consolidatedItems}"`
+            );
+            // Format consolidated items naturally: "chicken, beef, and water"
+            const items = result.consolidatedItems.split(", ");
+            console.log(`🔊 Split into ${items.length} items:`, items);
+            const formattedItems =
+              items.length === 2
+                ? `${items[0]} and ${items[1]}`
+                : items.length > 2
+                ? `${items.slice(0, -1).join(", ")}, and ${
+                    items[items.length - 1]
+                  }`
+                : items[0];
+
+            const confirmationMessage = `${parsedIntent.seat} wanted ${formattedItems}`;
+            console.log(`🔊 Speaking confirmation: "${confirmationMessage}"`);
+
+            await ttsServiceRef.current.speak(confirmationMessage, {
+              rate: 1.1,
+              pitch: 1.0,
+              volume: 1.0,
+            });
+          } catch (error) {
+            console.warn(
+              "⚠️ Task creation audio confirmation failed (non-critical):",
+              error
+            );
+          }
+        }
+      }
+
+      // Clear form
+      setTranscript("");
+      setParsedIntent(null);
+      setIsListening(false);
+      setIsMicReady(false);
+      hasAutoCreatedRef.current = false; // Reset auto-create flag
+
+      // Azure Speech Service will auto-restart via its internal mechanism
+      // No manual restart needed - this prevents restart loops and conflicts
+
+      // Show success notification (non-blocking)
+      showSuccess("Task Created", "Task created! Ready for next request.");
+    } catch (error: any) {
+      console.error("Failed to create task:", error);
+      showError(
+        "Task Creation Failed",
+        `Failed to create task: ${error.message || "Unknown error"}`
+      );
+
+      // Even on error, ensure continuous listening continues
+      setIsListening(false);
+      setIsMicReady(false);
+
+      // Azure Speech Service will auto-restart via its internal mechanism
+      // No manual restart needed - this prevents restart loops and conflicts
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-6 py-12">
+      {/* Microphone Test Toggle - Development Only */}
+      {import.meta.env.DEV && (
+        <div className="w-full max-w-2xl">
+          <button
+            onClick={() => setShowMicTest(!showMicTest)}
+            className="mb-4 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition-colors"
+          >
+            {showMicTest ? "Hide" : "Show"} Microphone Test
+          </button>
+
+          {showMicTest && (
+            <MicrophoneTest
+              onTestComplete={(passed) => {
+                console.log("Microphone test completed:", passed);
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Microphone Button */}
+      <button
+        onClick={isListening ? stopListening : startListening}
+        disabled={isParsing}
+        className={`
+          relative w-32 h-32 rounded-full flex items-center justify-center
+          transition-all duration-300 shadow-2xl
+          ${
+            isListening
+              ? "bg-red-500 animate-pulse"
+              : "bg-gradient-to-r from-blue-500 to-cyan-500 hover:scale-105"
+          }
+          ${isParsing ? "opacity-50 cursor-not-allowed" : ""}
+        `}
+      >
+        {isParsing ? (
+          <Loader2 size={48} className="text-white animate-spin" />
+        ) : (
+          <Mic size={48} className="text-white" />
+        )}
+      </button>
+
+      <p className="text-white text-sm">
+        {isListening
+          ? isMicReady
+            ? "Processing request..."
+            : "Initializing microphone..."
+          : "Always listening... (say 'Skymate' to activate)"}
+        {isParsing && " - Processing..."}
+      </p>
+
+      {/* Voice Service Health Status - Development Only */}
+      {import.meta.env.DEV && voiceServiceRef.current && (
+        <div className="text-xs text-white/60 mt-2">
+          Health:{" "}
+          {voiceServiceRef.current.getHealthCheck?.()?.status || "unknown"} |
+          API:{" "}
+          {voiceServiceRef.current.getHealthCheck?.()?.useAzureSpeech
+            ? "Azure Speech"
+            : "Web Speech"}
+        </div>
+      )}
+
+      {/* Performance Stats Button - Development Only */}
+      {import.meta.env.DEV && (
+        <button
+          onClick={handleShowPerformanceStats}
+          className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+        >
+          📊 Show AI Performance Stats
+        </button>
+      )}
+    </div>
+  );
+}
+
+export default VoiceInput;

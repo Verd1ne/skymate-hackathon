@@ -1,20 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import CrewApp from './crew/CrewApp';
 import GalleyApp from './galley/GalleyApp';
 import { Plane, UtensilsCrossed } from 'lucide-react';
 import { ToastProvider } from './shared/ToastContainer';
-import yolov8Service from '../lib/yolov8Service';
 
 function AppSwitcher() {
   const [activeApp, setActiveApp] = useState<'crew' | 'galley'>('crew');
-  
-  // Initialize YOLOv8 model on app startup
-  useEffect(() => {
-    console.log('🚀 Initializing YOLOv8 model...');
-    yolov8Service.initialize().catch(err => {
-      console.error('⚠️ YOLOv8 initialization failed:', err);
-    });
-  }, []);
 
   return (
     <ToastProvider>

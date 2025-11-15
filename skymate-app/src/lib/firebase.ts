@@ -1,5 +1,5 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getDatabase, ref, push, onValue, update, remove, Database, get } from 'firebase/database';
+import { getDatabase, ref, push, onValue, update, remove, Database, get, set } from 'firebase/database';
 import { getAuth, signInAnonymously, Auth } from 'firebase/auth';
 
 // Validate Firebase configuration
@@ -75,5 +75,5 @@ if (validateFirebaseConfig()) {
   auth = null;
 }
 
-export { db, ref, push, onValue, update, remove, get, Database };
+export { db, ref, push, onValue, update, remove, get, set, Database };
 

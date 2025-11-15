@@ -17,6 +17,8 @@ export interface PassengerInfo {
 	birthday?: string;
 	// Known allergies for the passenger; use ["none"] when no allergies
 	allergies?: string[];
+	// Past food orders history for this passenger
+	pastFood?: string[];
 }
 
 // Mock passenger database for a Cathay Pacific flight
@@ -29,6 +31,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		membershipTier: "gold",
 		birthday: "1988-07-12",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"1B": {
 		seatNumber: "1B",
@@ -37,6 +40,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		dietaryRestrictions: ["vegetarian"],
 		birthday: "1992-11-03",
 		allergies: ["shellfish"],
+		pastFood: [],
 	},
 	"1C": {
 		seatNumber: "1C",
@@ -44,6 +48,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "chicken",
 		membershipTier: "diamond",
 		birthday: "1990-04-21",
+		pastFood: [],
 	},
 	"1D": {
 		seatNumber: "1D",
@@ -52,18 +57,21 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		membershipTier: "gold",
 		birthday: "1985-09-30",
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"2A": {
 		seatNumber: "2A",
 		passengerName: "Michael Liu",
 		mealPreference: "chicken",
 		membershipTier: "diamond",
+		pastFood: [],
 	},
 	"2B": {
 		seatNumber: "2B",
 		passengerName: "Emily Zhang",
 		mealPreference: "fish",
 		membershipTier: "diamond",
+		pastFood: [],
 	},
 	"2C": {
 		seatNumber: "2C",
@@ -71,18 +79,21 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 	"2D": {
 		seatNumber: "2D",
 		passengerName: "Omar Farouk",
 		mealPreference: "beef",
 		membershipTier: "gold",
+		pastFood: [],
 	},
 	"3A": {
 		seatNumber: "3A",
 		passengerName: "David Kim",
 		mealPreference: "beef",
 		membershipTier: "gold",
+		pastFood: [],
 	},
 	"3B": {
 		seatNumber: "3B",
@@ -90,23 +101,27 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegan",
 		dietaryRestrictions: ["vegan"],
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"3C": {
 		seatNumber: "3C",
 		passengerName: "Wei Zhang",
 		mealPreference: "chicken",
 		membershipTier: "gold",
+		pastFood: [],
 	},
 	"3D": {
 		seatNumber: "3D",
 		passengerName: "Sofia Rossi",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 	"4A": {
 		seatNumber: "4A",
 		passengerName: "Robert Lee",
 		mealPreference: "chicken",
 		allergies: ["egg"],
+		pastFood: [],
 	},
 	"4B": {
 		seatNumber: "4B",
@@ -114,11 +129,13 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		membershipTier: "gold",
+		pastFood: [],
 	},
 	"4C": {
 		seatNumber: "4C",
 		passengerName: "Daniel Evans",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"4D": {
 		seatNumber: "4D",
@@ -126,24 +143,28 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["soy"],
+		pastFood: [],
 	},
 	"5A": {
 		seatNumber: "5A",
 		passengerName: "Andrew Chan",
 		mealPreference: "beef",
 		membershipTier: "diamond",
+		pastFood: [],
 	},
 	"5B": {
 		seatNumber: "5B",
 		passengerName: "Michelle Ho",
 		mealPreference: "fish",
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"5C": {
 		seatNumber: "5C",
 		passengerName: "Mateo Alvarez",
 		mealPreference: "chicken",
 		membershipTier: "gold",
+		pastFood: [],
 	},
 	"5D": {
 		seatNumber: "5D",
@@ -151,6 +172,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "beef",
 		membershipTier: "diamond",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 
 	// Additional Business Class - Row 6-10
@@ -160,6 +182,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "chicken",
 		birthday: "1987-02-14",
 		allergies: ["tree nuts"],
+		pastFood: [],
 	},
 	"6B": {
 		seatNumber: "6B",
@@ -168,12 +191,14 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		dietaryRestrictions: ["vegetarian"],
 		membershipTier: "gold",
 		birthday: "1991-12-09",
+		pastFood: [],
 	},
 	"6C": {
 		seatNumber: "6C",
 		passengerName: "Liam O'Connor",
 		mealPreference: "fish",
 		birthday: "1989-06-05",
+		pastFood: [],
 	},
 	"6D": {
 		seatNumber: "6D",
@@ -182,22 +207,26 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		dietaryRestrictions: ["vegetarian"],
 		birthday: "1993-08-17",
 		allergies: ["sesame"],
+		pastFood: [],
 	},
 	"7A": {
 		seatNumber: "7A",
 		passengerName: "Ross Geller",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"7B": {
 		seatNumber: "7B",
 		passengerName: "Chandler Bing",
 		mealPreference: "chicken",
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 	"8A": {
 		seatNumber: "8A",
 		passengerName: "Joey Tribbiani",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"8B": {
 		seatNumber: "8B",
@@ -205,35 +234,41 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"9A": {
 		seatNumber: "9A",
 		passengerName: "Steve Rogers",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"9B": {
 		seatNumber: "9B",
 		passengerName: "Tony Stark",
 		mealPreference: "beef",
 		allergies: ["shellfish"],
+		pastFood: [],
 	},
 	"9C": {
 		seatNumber: "9C",
 		passengerName: "Maria Hill",
 		mealPreference: "chicken",
 		specialRequests: ["baby bassinet"],
+		pastFood: [],
 	},
 	"9D": {
 		seatNumber: "9D",
 		passengerName: "Nick Fury",
 		mealPreference: "beef",
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"9E": {
 		seatNumber: "9E",
 		passengerName: "Wanda Maximoff",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 	"9F": {
 		seatNumber: "9F",
@@ -242,6 +277,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		dietaryRestrictions: ["vegan"],
 		specialRequests: ["baby bassinet"],
 		allergies: ["soy"],
+		pastFood: [],
 	},
 	"10A": {
 		seatNumber: "10A",
@@ -251,6 +287,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		priorityMember: true,
 		membershipTier: "diamond",
 		allergies: ["lactose"],
+		pastFood: [],
 	},
 	"10B": {
 		seatNumber: "10B",
@@ -258,6 +295,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "fish",
 		priorityMember: true,
 		membershipTier: "gold",
+		pastFood: [],
 	},
 
 	// Economy Class - Complete rows 20-60
@@ -265,6 +303,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "20A",
 		passengerName: "Kevin Wu",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"20B": {
 		seatNumber: "20B",
@@ -272,22 +311,26 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"20C": {
 		seatNumber: "20C",
 		passengerName: "Brian Yang",
 		mealPreference: "beef",
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"20D": {
 		seatNumber: "20D",
 		passengerName: "Diana Prince",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 	"20E": {
 		seatNumber: "20E",
 		passengerName: "Clark Kent",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"20F": {
 		seatNumber: "20F",
@@ -295,46 +338,54 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 
 	"21A": {
 		seatNumber: "21A",
 		passengerName: "Christina Choi",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 	"21B": {
 		seatNumber: "21B",
 		passengerName: "Daniel Park",
 		mealPreference: "chicken",
 		allergies: ["shellfish"],
+		pastFood: [],
 	},
 	"21C": {
 		seatNumber: "21C",
 		passengerName: "Grace Lin",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 	"21D": {
 		seatNumber: "21D",
 		passengerName: "Frank Castle",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"21E": {
 		seatNumber: "21E",
 		passengerName: "Karen Page",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"21F": {
 		seatNumber: "21F",
 		passengerName: "Matt Murdock",
 		mealPreference: "fish",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 
 	"22A": {
 		seatNumber: "22A",
 		passengerName: "Peter Parker",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"22B": {
 		seatNumber: "22B",
@@ -342,28 +393,33 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"22C": {
 		seatNumber: "22C",
 		passengerName: "Harry Osborn",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"22D": {
 		seatNumber: "22D",
 		passengerName: "Gwen Stacy",
 		mealPreference: "fish",
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 	"22E": {
 		seatNumber: "22E",
 		passengerName: "Miles Morales",
 		mealPreference: "chicken",
 		allergies: ["egg"],
+		pastFood: [],
 	},
 	"22F": {
 		seatNumber: "22F",
 		passengerName: "Miguel O'Hara",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 
 	"23A": {
@@ -371,39 +427,46 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		passengerName: "Bruce Wayne",
 		mealPreference: "beef",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"23B": {
 		seatNumber: "23B",
 		passengerName: "Alfred Pennyworth",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 	"23C": {
 		seatNumber: "23C",
 		passengerName: "Dick Grayson",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"23D": {
 		seatNumber: "23D",
 		passengerName: "Barbara Gordon",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 	"23E": {
 		seatNumber: "23E",
 		passengerName: "Jason Todd",
 		mealPreference: "beef",
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"23F": {
 		seatNumber: "23F",
 		passengerName: "Tim Drake",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 
 	"24A": {
 		seatNumber: "24A",
 		passengerName: "Luke Skywalker",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"24B": {
 		seatNumber: "24B",
@@ -411,57 +474,67 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 	"24C": {
 		seatNumber: "24C",
 		passengerName: "Han Solo",
 		mealPreference: "beef",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"24D": {
 		seatNumber: "24D",
 		passengerName: "Chewbacca",
 		mealPreference: "vegan",
 		dietaryRestrictions: ["vegan"],
+		pastFood: [],
 	},
 	"24E": {
 		seatNumber: "24E",
 		passengerName: "Obi-Wan Kenobi",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 	"24F": {
 		seatNumber: "24F",
 		passengerName: "Anakin Skywalker",
 		mealPreference: "chicken",
 		allergies: ["soy"],
+		pastFood: [],
 	},
 
 	"25A": {
 		seatNumber: "25A",
 		passengerName: "Thomas Wang",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"25B": {
 		seatNumber: "25B",
 		passengerName: "Jessica Huang",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"25C": {
 		seatNumber: "25C",
 		passengerName: "Ryan Chen",
 		mealPreference: "fish",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"25D": {
 		seatNumber: "25D",
 		passengerName: "Samantha Lee",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 	"25E": {
 		seatNumber: "25E",
 		passengerName: "Marcus Johnson",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"25F": {
 		seatNumber: "25F",
@@ -469,6 +542,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["sesame"],
+		pastFood: [],
 	},
 
 	// Continue filling rows 26-29
@@ -476,6 +550,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "26A",
 		passengerName: "Harry Potter",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"26B": {
 		seatNumber: "26B",
@@ -483,28 +558,33 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"26C": {
 		seatNumber: "26C",
 		passengerName: "Ron Weasley",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"26D": {
 		seatNumber: "26D",
 		passengerName: "Luna Lovegood",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 	"26E": {
 		seatNumber: "26E",
 		passengerName: "Neville Longbottom",
 		mealPreference: "chicken",
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"26F": {
 		seatNumber: "26F",
 		passengerName: "Ginny Weasley",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 
 	"27A": {
@@ -513,27 +593,32 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"27B": {
 		seatNumber: "27B",
 		passengerName: "Sam Gamgee",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"27C": {
 		seatNumber: "27C",
 		passengerName: "Merry Brandybuck",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"27D": {
 		seatNumber: "27D",
 		passengerName: "Pippin Took",
 		mealPreference: "chicken",
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 	"27E": {
 		seatNumber: "27E",
 		passengerName: "Aragorn",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"27F": {
 		seatNumber: "27F",
@@ -541,28 +626,33 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["soy"],
+		pastFood: [],
 	},
 
 	"28A": {
 		seatNumber: "28A",
 		passengerName: "Jon Snow",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"28B": {
 		seatNumber: "28B",
 		passengerName: "Daenerys Targaryen",
 		mealPreference: "fish",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"28C": {
 		seatNumber: "28C",
 		passengerName: "Tyrion Lannister",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"28D": {
 		seatNumber: "28D",
 		passengerName: "Arya Stark",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"28E": {
 		seatNumber: "28E",
@@ -570,28 +660,33 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"28F": {
 		seatNumber: "28F",
 		passengerName: "Cersei Lannister",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 
 	"29A": {
 		seatNumber: "29A",
 		passengerName: "Sherlock Holmes",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 	"29B": {
 		seatNumber: "29B",
 		passengerName: "John Watson",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"29C": {
 		seatNumber: "29C",
 		passengerName: "Mycroft Holmes",
 		mealPreference: "chicken",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"29D": {
 		seatNumber: "29D",
@@ -599,16 +694,19 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 	"29E": {
 		seatNumber: "29E",
 		passengerName: "Greg Lestrade",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"29F": {
 		seatNumber: "29F",
 		passengerName: "Mrs Hudson",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 
 	// Row 30-40
@@ -616,35 +714,41 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "30A",
 		passengerName: "Nathan Harris",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"30B": {
 		seatNumber: "30B",
 		passengerName: "Olivia White",
 		mealPreference: "fish",
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"30C": {
 		seatNumber: "30C",
 		passengerName: "Ethan Taylor",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"30D": {
 		seatNumber: "30D",
 		passengerName: "Sophia Anderson",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 	"30E": {
 		seatNumber: "30E",
 		passengerName: "Logan Martinez",
 		mealPreference: "chicken",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"30F": {
 		seatNumber: "30F",
 		passengerName: "Isabella Thomas",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 
 	"35A": {
@@ -652,33 +756,39 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		passengerName: "Ava Thompson",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 	"35B": {
 		seatNumber: "35B",
 		passengerName: "Lucas Moore",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"35C": {
 		seatNumber: "35C",
 		passengerName: "Mia Jackson",
 		mealPreference: "fish",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"35D": {
 		seatNumber: "35D",
 		passengerName: "Jackson White",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"35E": {
 		seatNumber: "35E",
 		passengerName: "Harper Lewis",
 		mealPreference: "chicken",
 		allergies: ["soy"],
+		pastFood: [],
 	},
 	"35F": {
 		seatNumber: "35F",
 		passengerName: "Evelyn Walker",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 
 	"40A": {
@@ -686,28 +796,33 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		passengerName: "Benjamin Martin",
 		mealPreference: "beef",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"40B": {
 		seatNumber: "40B",
 		passengerName: "Amelia Garcia",
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
+		pastFood: [],
 	},
 	"40C": {
 		seatNumber: "40C",
 		passengerName: "Henry Robinson",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"40D": {
 		seatNumber: "40D",
 		passengerName: "Charlotte King",
 		mealPreference: "fish",
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 	"40E": {
 		seatNumber: "40E",
 		passengerName: "Sebastian Young",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"40F": {
 		seatNumber: "40F",
@@ -715,6 +830,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["sesame"],
+		pastFood: [],
 	},
 
 	// Row 50-52 (Complete all seats)
@@ -722,6 +838,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		seatNumber: "50A",
 		passengerName: "Peter Anderson",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"50B": {
 		seatNumber: "50B",
@@ -729,17 +846,20 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"50C": {
 		seatNumber: "50C",
 		passengerName: "John Smith",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"51A": {
 		seatNumber: "51A",
 		passengerName: "Sophie Martin",
 		mealPreference: "fish",
 		allergies: ["none"],
+		pastFood: [],
 	},
 	"51B": {
 		seatNumber: "51B",
@@ -747,28 +867,33 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["gluten"],
+		pastFood: [],
 	},
 	"51C": {
 		seatNumber: "51C",
 		passengerName: "Emma Wilson",
 		mealPreference: "chicken",
 		allergies: ["dairy"],
+		pastFood: [],
 	},
 	"52A": {
 		seatNumber: "52A",
 		passengerName: "Oliver Brown",
 		mealPreference: "beef",
 		allergies: ["peanuts"],
+		pastFood: [],
 	},
 	"52B": {
 		seatNumber: "52B",
 		passengerName: "Isabella Martinez",
 		mealPreference: "chicken",
+		pastFood: [],
 	},
 	"52C": {
 		seatNumber: "52C",
 		passengerName: "William Davis",
 		mealPreference: "fish",
+		pastFood: [],
 	},
 	"52D": {
 		seatNumber: "52D",
@@ -776,11 +901,13 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["soy"],
+		pastFood: [],
 	},
 	"52E": {
 		seatNumber: "52E",
 		passengerName: "James Miller",
 		mealPreference: "beef",
+		pastFood: [],
 	},
 	"52F": {
 		seatNumber: "52F",
@@ -788,6 +915,7 @@ const PASSENGER_DATABASE: Record<string, PassengerInfo> = {
 		mealPreference: "vegetarian",
 		dietaryRestrictions: ["vegetarian"],
 		allergies: ["sesame"],
+		pastFood: [],
 	},
 };
 

@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo   Starting SkyMate YOLOv8 Backend
+echo   Starting SkyMate Backend
 echo ========================================
 echo.
 cd server

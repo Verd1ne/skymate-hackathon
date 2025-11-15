@@ -1,7 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import detectionRouter from './routes/detection';
-import yolov8Service from './services/yolov8';
+import videoRouter from './routes/video.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -20,17 +19,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // Routes
-app.use('/api', detectionRouter);
+app.use('/api', videoRouter);
 
 // Root endpoint
 app.get('/', (req: Request, res: Response) => {
   res.json({
-    name: 'SkyMate YOLOv8 Server',
+    name: 'SkyMate Server',
     version: '1.0.0',
     status: 'running',
     endpoints: {
-      health: '/api/health',
-      detect: '/api/detect (POST)',
+      video: '/api/video',
     },
   });
 });
@@ -44,20 +42,16 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   });
 });
 
-// Initialize YOLOv8 model before starting server
+// Start server
 async function startServer() {
   try {
-    console.log('🚀 Starting SkyMate YOLOv8 Server...\n');
-
-    // Initialize YOLOv8 model
-    await yolov8Service.initialize();
+    console.log('🚀 Starting SkyMate Server...\n');
 
     // Start Express server
     app.listen(PORT, () => {
       console.log('\n✅ Server is running!');
       console.log(`   URL: http://localhost:${PORT}`);
-      console.log(`   Health check: http://localhost:${PORT}/api/health`);
-      console.log(`   Detection endpoint: POST http://localhost:${PORT}/api/detect\n`);
+      console.log(`   Video API: http://localhost:${PORT}/api/video\n`);
     });
   } catch (error: any) {
     console.error('❌ Failed to start server:', error.message);

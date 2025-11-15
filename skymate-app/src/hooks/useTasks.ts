@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { db, ref, push, onValue, update, get } from "../lib/firebase";
+import { db, ref, push, onValue, update, get, set } from "../lib/firebase";
 import { calculatePriority } from "../lib/priorityEngine";
 import { escalationMonitor } from "../lib/priorityEscalation";
 import { contextAI } from "../lib/contextAI";
@@ -253,11 +253,42 @@ export function useTasks() {
 		}
 
 		try {
+			// Get the task data before completing it
 			const taskRef = ref(db, `tasks/${taskId}`);
-			await update(taskRef, {
-				status: "completed",
-				completedAt: Date.now(),
-			});
+			const taskSnapshot = await get(taskRef);
+			
+			if (taskSnapshot.exists()) {
+				const task = taskSnapshot.val();
+				
+				// Update task status
+				await update(taskRef, {
+					status: "completed",
+					completedAt: Date.now(),
+				});
+				
+				// Add completed items to passenger's past food history
+				if (task.seat && task.item) {
+					const normalizedSeat = task.seat.replace(/\s+/g, "").toUpperCase();
+					const items = task.item.split(",").map((i: string) => i.trim()).filter(Boolean);
+					
+					// Get current past food for this seat
+					const pastFoodRef = ref(db, `passengerPastFood/${normalizedSeat}`);
+					const pastFoodSnapshot = await get(pastFoodRef);
+					
+					let currentPastFood: string[] = [];
+					if (pastFoodSnapshot.exists()) {
+						currentPastFood = pastFoodSnapshot.val() || [];
+					}
+					
+					// Add new items (avoiding duplicates)
+					const updatedPastFood = [...new Set([...currentPastFood, ...items])];
+					
+					// Save back to Firebase using set() for arrays
+					await set(pastFoodRef, updatedPastFood);
+					
+					console.log(`✅ Added ${items.join(", ")} to past food for seat ${normalizedSeat}`);
+				}
+			}
 			
 			// Note: Inventory is deducted at task creation time
 			// When task is completed, the item quantity has already been reduced
@@ -520,8 +551,27 @@ export function useTasks() {
 				};
 			}
 
+			// Store the completed item name BEFORE removing it from array
+			const completedItemName = itemsArray[itemIndex];
+
 			// Remove the completed item
 			itemsArray.splice(itemIndex, 1);
+
+			// Add the completed item to passenger's past food history
+			const pastFoodRef = ref(db, `passengerPastFood/${normalizedSeat}`);
+			const pastFoodSnapshot = await get(pastFoodRef);
+			
+			let currentPastFood: string[] = [];
+			if (pastFoodSnapshot.exists()) {
+				currentPastFood = pastFoodSnapshot.val() || [];
+			}
+			
+			// Add completed item (avoiding duplicates)
+			if (!currentPastFood.includes(completedItemName)) {
+				const updatedPastFood = [...currentPastFood, completedItemName];
+				await set(pastFoodRef, updatedPastFood);
+				console.log(`✅ Added "${completedItemName}" to past food for seat ${normalizedSeat}`);
+			}
 
 			if (itemsArray.length === 0) {
 				// Last item - complete the entire task

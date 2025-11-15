@@ -3,7 +3,6 @@ import {
   Package,
   CheckCircle,
   AlertTriangle,
-  Camera,
   TruckIcon,
   Edit3,
   Undo2,
@@ -12,8 +11,6 @@ import {
 } from "lucide-react";
 import { useInventory } from "../../hooks/useInventory";
 import type { InventoryItem } from "../../hooks/useInventory";
-// import YOLOCameraView from "./YOLOCameraView";
-import CameraViewAuto from "./CameraViewAuto";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "../shared/ToastContainer";
 import { migrateInventoryGalleys } from "../../utils/migrateInventoryGalleys";
@@ -34,7 +31,6 @@ function InventoryPanelFirebase() {
     updateInventoryQuantity,
   } = useInventory();
 
-  const [showCamera, setShowCamera] = useState(false);
   const [showRequestStock, setShowRequestStock] = useState(false);
   const [showUpdateCounts, setShowUpdateCounts] = useState(false);
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
@@ -162,13 +158,6 @@ function InventoryPanelFirebase() {
           {/* Quick Actions */}
           <div className="flex flex-col gap-2">
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowCamera(true)}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2 font-medium"
-              >
-                <Camera size={18} />
-                Scan Item
-              </button>
               <button
                 onClick={() => setShowRequestStock(true)}
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2 font-medium"
@@ -306,17 +295,6 @@ function InventoryPanelFirebase() {
           </div>
         </div>
       </div>
-
-      {/* YOLO Camera View Modal */}
-      {showCamera && (
-        <CameraViewAuto
-          onClose={() => setShowCamera(false)}
-          onScanComplete={(result) => {
-            console.log("Scan complete:", result);
-            setShowCamera(false);
-          }}
-        />
-      )}
 
       {/* Undo Notification */}
       <AnimatePresence>

@@ -3539,6 +3539,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					// CRITICAL: Force complete reset - happens for EACH NEW wake word utterance
 					this.resetWakeWordState();
 					const session = this.startNewSession();
+					this.wakeWordConfirmationPlayed = false; // Reset beep flag for new wake word
 
 					// Update metrics and state
 					this.metrics.wakeWordDetections++;
@@ -3548,7 +3549,7 @@ public <request> = [<wake_word>] <seat> <action> [<article>] <item>;`;
 					foundWakeWordInFinal = true;
 
 					// Trigger wake word confirmation audio (only once per wake word)
-					if (this.onWakeWordConfirmation && !this.wakeWordConfirmationPlayed) {
+					if (this.onWakeWordConfirmation) {
 						this.wakeWordConfirmationPlayed = true;
 						this.onWakeWordConfirmation();
 					}

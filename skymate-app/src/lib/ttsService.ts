@@ -476,7 +476,7 @@ export class TTSService {
 					config.azureSpeech.region
 				);
 				speechConfig.speechSynthesisLanguage = "en-US";
-				speechConfig.speechSynthesisVoiceName = "en-US-ElizabethNeural";
+				speechConfig.speechSynthesisVoiceName = "en-US-AvaMultilingualNeural";
 				
 				// Use 24kHz format for better mobile compatibility
 				speechConfig.speechSynthesisOutputFormat = this.sdk.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm;
@@ -915,7 +915,7 @@ export class TTSService {
 			// Simple SSML without prosody for default settings
 			const ssml = `<?xml version="1.0" encoding="UTF-8"?>
 <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-	<voice name="en-US-ElizabethNeural">
+	<voice name="en-US-AvaMultilingualNeural">
 		${escapedText}
 	</voice>
 </speak>`;
@@ -925,7 +925,7 @@ export class TTSService {
 		// Build SSML with prosody for custom settings
 		const ssml = `<?xml version="1.0" encoding="UTF-8"?>
 <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-	<voice name="en-US-ElizabethNeural">
+	<voice name="en-US-AvaMultilingualNeural">
 		<prosody rate="${rateValue}" pitch="${pitchValue}" volume="${volumeValue}">
 			${escapedText}
 		</prosody>

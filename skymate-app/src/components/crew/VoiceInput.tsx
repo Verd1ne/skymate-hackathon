@@ -1101,7 +1101,7 @@ function VoiceInput() {
         });
 
         const teamIntroText =
-          "Sorry, I couldnt catch that. JUST KIDDING, Hello Judges, I'm the sixth member, skymate! We are C O B";
+          "Sorry, I couldnt catch that... JUST KIDDING, Hello Judges, I'm the sixth member, An AI Voice Assistant for Flight Attendants! We are C O B";
 
         console.log(`✅ Team introduction: ${teamIntroText}`);
 
